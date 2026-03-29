@@ -78,7 +78,7 @@
                 <!-- 選擇站別 (改成按鍵式) -->
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-2">評分站別</label>
-                    <div id="stationContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div id="stationContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         <!-- 動態插入 -->
                     </div>
                 </div>
@@ -95,7 +95,7 @@
                 <div id="stageContainer" class="hidden border-t pt-4 mt-6 border-gray-200">
                     <label class="block text-sm font-medium text-gray-700 mb-2">OPA (Observable Practice Activity)
                         "請點開參考評分項目"</label>
-                    <div class="grid grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <label
                             class="relative flex items-center justify-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200">
                             <input type="radio" name="stage" value="OPA1" class="sr-only peer" required>
@@ -147,34 +147,34 @@
                             id="labelAspect">此次觀察面向選擇請擇二選取(必填)</label>
                         <div class="space-y-3 pl-2" id="aspectCheckboxes">
                             <label
-                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                class="flex items-start sm:items-center cursor-pointer hover:bg-gray-100 p-2 -ml-1 rounded transition-colors w-full">
                                 <input type="checkbox" name="aspect_cb" value="1"
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                <span class="ml-2 text-sm text-gray-800">1.醫學影像及放射科學知識</span>
+                                    class="h-4 w-4 mt-1 sm:mt-0 text-blue-600 rounded border-gray-300 flex-shrink-0">
+                                <span class="ml-2 text-sm text-gray-800 break-words">1.醫學影像及放射科學知識</span>
                             </label>
                             <label
-                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                class="flex items-start sm:items-center cursor-pointer hover:bg-gray-100 p-2 -ml-1 rounded transition-colors w-full">
                                 <input type="checkbox" name="aspect_cb" value="2"
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                <span class="ml-2 text-sm text-gray-800">2.醫病關係及團隊溝通能力</span>
+                                    class="h-4 w-4 mt-1 sm:mt-0 text-blue-600 rounded border-gray-300 flex-shrink-0">
+                                <span class="ml-2 text-sm text-gray-800 break-words">2.醫病關係及團隊溝通能力</span>
                             </label>
                             <label
-                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                class="flex items-start sm:items-center cursor-pointer hover:bg-gray-100 p-2 -ml-1 rounded transition-colors w-full">
                                 <input type="checkbox" name="aspect_cb" value="3"
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                <span class="ml-2 text-sm text-gray-800">3.病人照護</span>
+                                    class="h-4 w-4 mt-1 sm:mt-0 text-blue-600 rounded border-gray-300 flex-shrink-0">
+                                <span class="ml-2 text-sm text-gray-800 break-words">3.病人照護</span>
                             </label>
                             <label
-                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                class="flex items-start sm:items-center cursor-pointer hover:bg-gray-100 p-2 -ml-1 rounded transition-colors w-full">
                                 <input type="checkbox" name="aspect_cb" value="4"
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                <span class="ml-2 text-sm text-gray-800">4.提升本職技能</span>
+                                    class="h-4 w-4 mt-1 sm:mt-0 text-blue-600 rounded border-gray-300 flex-shrink-0">
+                                <span class="ml-2 text-sm text-gray-800 break-words">4.提升本職技能</span>
                             </label>
                             <label
-                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                class="flex items-start sm:items-center cursor-pointer hover:bg-gray-100 p-2 -ml-1 rounded transition-colors w-full">
                                 <input type="checkbox" name="aspect_cb" value="5"
-                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
-                                <span class="ml-2 text-sm text-gray-800">5.專業素養</span>
+                                    class="h-4 w-4 mt-1 sm:mt-0 text-blue-600 rounded border-gray-300 flex-shrink-0">
+                                <span class="ml-2 text-sm text-gray-800 break-words">5.專業素養</span>
                             </label>
                         </div>
                     </div>
@@ -323,9 +323,9 @@
             return checked ? checked.value : null;
         }
 
-        // 建立 8 個信賴等級按紐群組（移除 required，這樣 HTML5 自帶的防呆不會互相衝突，全由我們 JS 控制較好，但先保留）
+        // 建立 8 個信賴等級按紐群組
         function createTrustButtons(groupName, required = true) {
-            let html = `<div class="grid grid-cols-4 sm:grid-cols-8 gap-2 trust-btn-group" id="group_${groupName}">`;
+            let html = `<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 trust-btn-group" id="group_${groupName}">`;
             configData.trust_levels.forEach((lvl, idx) => {
                 const uid = `btn_${groupName}_${idx}`;
                 html += `
