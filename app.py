@@ -131,10 +131,16 @@ def get_config():
         trust_records = sheet_trust.get_all_records()
         trust_levels = []
         for rec in trust_records:
+            score = str(rec.get('分數', '')).strip()
+            level = str(rec.get('信賴等級', '')).strip()
+            
+            if not score and not level:
+                continue
+                
             trust_levels.append({
-                'score': str(rec.get('分數', '')),
-                'level': str(rec.get('信賴等級', '')),
-                'desc': str(rec.get('描述', ''))
+                'score': score,
+                'level': level,
+                'desc': str(rec.get('描述', '')).strip()
             })
             
         # 取得歷史評分紀錄次數
