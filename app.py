@@ -32,17 +32,31 @@ google = oauth.register(
 
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds_file = os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if creds_file and os.path.exists(creds_file):
+    
+    # 嘗試多個可能存放憑證的路徑：1. 環境變數 2. Render 預設機密路徑 3. 本機根目錄
+    possible_paths = [
+        os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
+        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
+        "/etc/secrets/credentials.json",   # Render default secret file path
+        "credentials.json"
+    ]
+    
+    creds_file = None
+    for path in possible_paths:
+        if path and os.path.exists(path):
+            creds_file = path
+            break
+
+    if creds_file:
         try:
             creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, scope)
             client = gspread.authorize(creds)
             return client
         except Exception as e:
-            print(f"Error loading credentials: {e}")
+            print(f"Error loading credentials from {creds_file}: {e}")
             return None
     else:
-        print(f"Credentials file not found or path not set: {creds_file}")
+        print(f"Credentials file not found in any of the configured paths.")
     return None
 
 @app.route('/')
