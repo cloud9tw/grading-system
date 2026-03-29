@@ -257,8 +257,9 @@ def submit_grade():
             aspect2,
             comment
         ]
-        
-        sheet.append_row(row)
+        # 強制告訴 Google 試算表從整張表的 A1 欄開始往下當作新增基準
+        # 避免 Google 的「自動探測表格」功能發生向右位移（例如跳過前 32 欄）的 BUG
+        sheet.append_row(row, table_range="A1")
         
         return jsonify({'success': True})
     except Exception as e:
