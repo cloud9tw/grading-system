@@ -297,18 +297,19 @@
             document.querySelectorAll('input[name="station"]').forEach(r => {
                 r.addEventListener('change', () => {
                     renderOpaSums();
+                    renderAllStageItems();
                     document.getElementById('stageContainer').classList.remove('hidden');
                     document.getElementById('requiredFields').classList.remove('hidden');
                     // 若這時候已經選擇了 stage，更新下方的 items
                     if (getSelectedStage()) {
-                        checkAndRenderItems();
+                        switchStageVisibility(getSelectedStage());
                     }
                 });
             });
 
             // 選擇 Stage 後顯示 Items
             document.querySelectorAll('input[name="stage"]').forEach(r => {
-                r.addEventListener('change', checkAndRenderItems);
+                r.addEventListener('change', (e) => switchStageVisibility(e.target.value));
             });
         }
 
@@ -377,49 +378,65 @@
             setupTrustButtonListeners(container);
         }
 
-        // 僅繪製細部 8 題
-        function checkAndRenderItems() {
+        // 預先繪製所有階段的 8 題細項到各自隱藏的容器中，避免切換時 DOM 重建導致作答紀錄消失
+        function renderAllStageItems() {
             const station = getSelectedStation();
-            const stage = getSelectedStage();
             const container = document.getElementById('dynamicGradingItems');
-            const notice = document.getElementById('feedbackNotice');
-
-            if (!station || !stage) return;
+            if (!station) return;
 
             container.innerHTML = '';
 
-            let items = [];
-            if (stage === 'OPA1') items = station.opa1_items;
-            else if (stage === 'OPA2') items = station.opa2_items;
-            else if (stage === 'OPA3') items = station.opa3_items;
+            const stages = ['OPA1', 'OPA2', 'OPA3'];
+            stages.forEach(stage => {
+                const stageDiv = document.createElement('div');
+                stageDiv.id = `items_${stage}`;
+                stageDiv.className = 'hidden space-y-6';
 
-            let hasValidItem = false;
-            items.forEach((itemText, i) => {
-                if (!itemText || itemText.trim() === '') return;
-                hasValidItem = true;
-                const fieldNameItem = `${stage.toLowerCase()}_${i + 1}`;
+                let items = [];
+                if (stage === 'OPA1') items = station.opa1_items;
+                else if (stage === 'OPA2') items = station.opa2_items;
+                else if (stage === 'OPA3') items = station.opa3_items;
 
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'bg-white p-4 border border-gray-100 rounded-lg shadow-sm';
-                itemDiv.innerHTML = `
-                    <p class="text-sm font-medium text-gray-800 mb-3">${i + 1}. ${itemText}</p>
-                    ${createTrustButtons(fieldNameItem, false)}
-                `;
-                container.appendChild(itemDiv);
+                let hasValidItem = false;
+                items.forEach((itemText, i) => {
+                    if (!itemText || itemText.trim() === '') return;
+                    hasValidItem = true;
+                    const fieldNameItem = `${stage.toLowerCase()}_${i + 1}`;
+
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'bg-white p-4 border border-gray-100 rounded-lg shadow-sm';
+                    itemDiv.innerHTML = `
+                        <p class="text-sm font-medium text-gray-800 mb-3">${i + 1}. ${itemText}</p>
+                        ${createTrustButtons(fieldNameItem, false)}
+                    `;
+                    stageDiv.appendChild(itemDiv);
+                });
+
+                if (!hasValidItem) {
+                    const emptyMsg = document.createElement('p');
+                    emptyMsg.className = 'text-gray-500 italic text-center p-4';
+                    emptyMsg.textContent = '這個階段沒有設定具體評分細項。';
+                    stageDiv.appendChild(emptyMsg);
+                }
+
+                container.appendChild(stageDiv);
             });
 
-            if (!hasValidItem) {
-                const emptyMsg = document.createElement('p');
-                emptyMsg.className = 'text-gray-500 italic text-center p-4';
-                emptyMsg.textContent = '這個階段沒有設定具體評分細項。';
-                container.appendChild(emptyMsg);
-                notice.classList.add('hidden');
-            } else {
-                notice.classList.remove('hidden');
-            }
-
-            container.classList.remove('hidden');
             setupTrustButtonListeners(container);
+        }
+
+        function switchStageVisibility(stage) {
+            if (!stage) return;
+            document.getElementById('dynamicGradingItems').classList.remove('hidden');
+            document.getElementById('feedbackNotice').classList.remove('hidden');
+            
+            ['OPA1', 'OPA2', 'OPA3'].forEach(s => {
+                const el = document.getElementById(`items_${s}`);
+                if (el) el.classList.add('hidden');
+            });
+            
+            const activeEl = document.getElementById(`items_${stage}`);
+            if (activeEl) activeEl.classList.remove('hidden');
         }
 
         document.getElementById('gradingForm').addEventListener('submit', async (e) => {
