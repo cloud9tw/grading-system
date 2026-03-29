@@ -1,0 +1,17 @@
+# Environment files
+.env
+
+# Credentials
+credentials.json
+*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# macOS
+.DS_Store

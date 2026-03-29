@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學員評分系統 - 評分面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .trust-level-btn input:checked+div {
+            background-color: #ebf5ff;
+            border-color: #3b82f6;
+            color: #2563eb;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2">
+                        </path>
+                    </svg>
+                    <span class="font-bold text-xl text-gray-900">評分系統</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <img class="h-8 w-8 rounded-full" src="{{ user.picture }}" alt="User avatar"
+                            onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}'">
+                        <span class="text-sm font-medium text-gray-700">{{ user.name }} ({{ user.email }})</span>
+                    </div>
+                    <a href="/logout"
+                        class="text-sm font-medium text-red-600 hover:text-red-800 transition-colors">登出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-3xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+        <div class="bg-white px-8 py-8 shadow-sm rounded-xl border border-gray-200">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-6">填寫評分表單</h2>
+
+            <div id="loadingConfig" class="text-center py-8 text-gray-500 flex flex-col items-center">
+                <svg class="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none"
+                    viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                    </path>
+                </svg>
+                <p>正在載入系統設定，請稍候...</p>
+            </div>
+
+            <form id="gradingForm" class="space-y-6 hidden">
+                <!-- 選擇學員 -->
+                <div>
+                    <label for="studentSelect" class="block text-sm font-medium text-gray-700 mb-1">選擇學員</label>
+                    <select id="studentSelect" name="student" required
+                        class="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md border shadow-sm">
+                        <option value="" disabled selected>請選擇學員</option>
+                    </select>
+                    <div id="studentStats"
+                        class="mt-2 text-sm text-gray-600 hidden bg-gray-100 p-3 rounded-md border border-gray-200">
+                    </div>
+                </div>
+
+                <!-- 選擇站別 (改成按鍵式) -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">評分站別</label>
+                    <div id="stationContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <!-- 動態插入 -->
+                    </div>
+                </div>
+
+                <!-- 總和評比區塊 (常駐必答 3 題) -->
+                <div id="opaSumsContainer" class="hidden space-y-6 mt-6 border-t pt-6 border-gray-200">
+                    <h3 class="text-lg font-bold text-gray-900 border-l-4 border-blue-500 pl-2">整體表現總和評比 (必答)</h3>
+                    <div id="opaSumsContent" class="space-y-4">
+                        <!-- 動態插入 OPA1~3 總和題 -->
+                    </div>
+                </div>
+
+                <!-- 學習階段 -->
+                <div id="stageContainer" class="hidden border-t pt-4 mt-6 border-gray-200">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">OPA (Observable Practice Activity)
+                        "請點開參考評分項目"</label>
+                    <div class="grid grid-cols-3 gap-3">
+                        <label
+                            class="relative flex items-center justify-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200">
+                            <input type="radio" name="stage" value="OPA1" class="sr-only peer" required>
+                            <span class="text-sm font-medium text-gray-900 peer-checked:text-blue-600 text-center">OPA1
+                                檢查前準備</span>
+                            <div
+                                class="absolute inset-0 border-2 border-transparent rounded-lg peer-checked:border-blue-600 pointer-events-none">
+                            </div>
+                        </label>
+                        <label
+                            class="relative flex items-center justify-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200">
+                            <input type="radio" name="stage" value="OPA2" class="sr-only peer">
+                            <span class="text-sm font-medium text-gray-900 peer-checked:text-blue-600 text-center">OPA2
+                                執行造影檢查</span>
+                            <div
+                                class="absolute inset-0 border-2 border-transparent rounded-lg peer-checked:border-blue-600 pointer-events-none">
+                            </div>
+                        </label>
+                        <label
+                            class="relative flex items-center justify-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200">
+                            <input type="radio" name="stage" value="OPA3" class="sr-only peer">
+                            <span class="text-sm font-medium text-gray-900 peer-checked:text-blue-600 text-center">OPA3
+                                檢查後處置</span>
+                            <div
+                                class="absolute inset-0 border-2 border-transparent rounded-lg peer-checked:border-blue-600 pointer-events-none">
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- 回饋參考內容文字提醒 -->
+                <div id="feedbackNotice"
+                    class="hidden mt-6 text-center py-2 bg-yellow-50 text-yellow-800 rounded-md border border-yellow-200 font-semibold shadow-sm">
+                    回饋參考內容
+                </div>
+
+                <!-- 動態評分細部項目 -->
+                <div id="dynamicGradingItems" class="space-y-6 mt-4 hidden">
+                    <!-- 動態內容將插入於此 -->
+                </div>
+
+                <!-- 綜合意見必答題區塊 -->
+                <div id="requiredFields"
+                    class="space-y-6 mt-6 border-t pt-6 border-gray-200 hidden bg-gray-50 p-6 rounded-lg">
+                    <h3 class="text-lg font-medium text-gray-900 mb-2">綜合意見 (必答)</h3>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-3"
+                            id="labelAspect">此次觀察面向選擇請擇二選取(必填)</label>
+                        <div class="space-y-3 pl-2" id="aspectCheckboxes">
+                            <label
+                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                <input type="checkbox" name="aspect_cb" value="1"
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                <span class="ml-2 text-sm text-gray-800">1.醫學影像及放射科學知識</span>
+                            </label>
+                            <label
+                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                <input type="checkbox" name="aspect_cb" value="2"
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                <span class="ml-2 text-sm text-gray-800">2.醫病關係及團隊溝通能力</span>
+                            </label>
+                            <label
+                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                <input type="checkbox" name="aspect_cb" value="3"
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                <span class="ml-2 text-sm text-gray-800">3.病人照護</span>
+                            </label>
+                            <label
+                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                <input type="checkbox" name="aspect_cb" value="4"
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                <span class="ml-2 text-sm text-gray-800">4.提升本職技能</span>
+                            </label>
+                            <label
+                                class="flex items-center cursor-pointer hover:bg-gray-100 p-1 -ml-1 rounded transition-colors w-max">
+                                <input type="checkbox" name="aspect_cb" value="5"
+                                    class="h-4 w-4 text-blue-600 rounded border-gray-300">
+                                <span class="ml-2 text-sm text-gray-800">5.專業素養</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="pt-4">
+                        <label for="comment" class="block text-sm font-medium text-gray-700 mb-1"
+                            id="labelComment">質性回饋-請簡單輸入針對學員此次表現評語(必填)</label>
+                        <textarea name="comment" id="comment" rows="3" required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"></textarea>
+                    </div>
+                </div>
+
+                <!-- 提交按鈕 -->
+                <div class="pt-4">
+                    <button type="submit" id="submitBtn"
+                        class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        送出評分
+                    </button>
+                </div>
+            </form>
+
+            <div id="messageBox" class="mt-6 hidden rounded-md p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0" id="messageIcon"></div>
+                    <div class="ml-3">
+                        <p class="text-sm font-medium" id="messageText"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let configData = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch('/api/config');
+                const data = await res.json();
+
+                if (data.success) {
+                    configData = data;
+                    initForm();
+                } else {
+                    showError('無法載入系統設定：' + data.error);
+                }
+            } catch (err) {
+                showError('載入系統設定發生網路錯誤。');
+            }
+        });
+
+        function showError(msg) {
+            document.getElementById('loadingConfig').innerHTML = `<p class="text-red-500">${msg}</p>`;
+        }
+
+        function initForm() {
+            document.getElementById('loadingConfig').classList.add('hidden');
+            document.getElementById('gradingForm').classList.remove('hidden');
+
+            const studentSelect = document.getElementById('studentSelect');
+            configData.students.forEach(student => {
+                const opt = document.createElement('option');
+                opt.value = JSON.stringify({ id: student.id, name: student.name });
+                opt.textContent = `${student.name} (${student.id})`;
+                studentSelect.appendChild(opt);
+            });
+
+            studentSelect.addEventListener('change', () => {
+                const checkedVal = studentSelect.value;
+                if (!checkedVal) return;
+                const studentObj = JSON.parse(checkedVal);
+                const statsDiv = document.getElementById('studentStats');
+
+                // 後端讀取的屬性: stations 和 aspects
+                const stats = (configData.student_stats && configData.student_stats[studentObj.id]) ? configData.student_stats[studentObj.id] : null;
+
+                if (stats) {
+                    let stnParts = [];
+                    if (stats.stations && Object.keys(stats.stations).length > 0) {
+                        for (const [stn, count] of Object.entries(stats.stations)) {
+                            stnParts.push(`${stn}(${count}次)`);
+                        }
+                    }
+                    let aspParts = [];
+                    if (stats.aspects && Object.keys(stats.aspects).length > 0) {
+                        for (const [asp, count] of Object.entries(stats.aspects)) {
+                            aspParts.push(`第${asp}項(${count}次)`);
+                        }
+                    }
+
+                    let html = '';
+                    if (stnParts.length > 0) html += `<div class="mb-1"><span class="font-medium text-blue-700">📌 已評分站別：</span>${stnParts.join('、')}</div>`;
+                    if (aspParts.length > 0) html += `<div><span class="font-medium text-green-700">🔎 歷來觀察面向累積：</span>${aspParts.join('、')}</div>`;
+
+                    if (html === '') {
+                        statsDiv.innerHTML = `<span class="text-gray-500 italic">此學員目前尚無評分紀錄</span>`;
+                    } else {
+                        statsDiv.innerHTML = html;
+                    }
+                } else {
+                    statsDiv.innerHTML = `<span class="text-gray-500 italic">此學員目前尚無評分紀錄</span>`;
+                }
+                statsDiv.classList.remove('hidden');
+            });
+
+            // 站別按鍵式
+            const stationContainer = document.getElementById('stationContainer');
+            configData.stations.forEach((station, idx) => {
+                const label = document.createElement('label');
+                label.className = "relative flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200";
+                label.innerHTML = `
+                    <input type="radio" name="station" value="${station.name}" class="sr-only peer" required>
+                    <span class="text-sm font-medium text-gray-900 peer-checked:text-blue-600 text-center">${station.name}</span>
+                    <div class="absolute inset-0 border-2 border-transparent rounded-lg peer-checked:border-blue-600 pointer-events-none"></div>
+                `;
+                stationContainer.appendChild(label);
+            });
+
+            // 選擇站別後顯示 OPASums 與 Stage 選擇
+            document.querySelectorAll('input[name="station"]').forEach(r => {
+                r.addEventListener('change', () => {
+                    renderOpaSums();
+                    document.getElementById('stageContainer').classList.remove('hidden');
+                    document.getElementById('requiredFields').classList.remove('hidden');
+                    // 若這時候已經選擇了 stage，更新下方的 items
+                    if (getSelectedStage()) {
+                        checkAndRenderItems();
+                    }
+                });
+            });
+
+            // 選擇 Stage 後顯示 Items
+            document.querySelectorAll('input[name="stage"]').forEach(r => {
+                r.addEventListener('change', checkAndRenderItems);
+            });
+        }
+
+        function getSelectedStation() {
+            const checked = document.querySelector('input[name="station"]:checked');
+            if (!checked) return null;
+            return configData.stations.find(s => s.name === checked.value);
+        }
+
+        function getSelectedStage() {
+            const checked = document.querySelector('input[name="stage"]:checked');
+            return checked ? checked.value : null;
+        }
+
+        // 建立 8 個信賴等級按紐群組（移除 required，這樣 HTML5 自帶的防呆不會互相衝突，全由我們 JS 控制較好，但先保留）
+        function createTrustButtons(groupName, required = true) {
+            let html = `<div class="grid grid-cols-4 sm:grid-cols-8 gap-2 trust-btn-group" id="group_${groupName}">`;
+            configData.trust_levels.forEach((lvl, idx) => {
+                const uid = `btn_${groupName}_${idx}`;
+                html += `
+                    <label class="trust-level-btn relative flex items-center justify-center p-2 border rounded cursor-pointer hover:bg-gray-50 transition-all border-gray-200 text-center text-sm font-medium">
+                        <input type="radio" name="${groupName}" value="${lvl.score}" class="sr-only" ${required ? 'required' : ''} data-desc="${lvl.desc}">
+                        <div>${lvl.level}</div>
+                    </label>
+                `;
+            });
+            html += `</div>
+            <p class="mt-2 text-sm text-gray-500 italic h-5 trust-desc" id="desc_${groupName}"></p>`;
+            return html;
+        }
+
+        function setupTrustButtonListeners(container) {
+            const radios = container.querySelectorAll('input[type="radio"]');
+            radios.forEach(r => {
+                r.addEventListener('change', (e) => {
+                    const descText = e.target.getAttribute('data-desc');
+                    const descEl = document.getElementById('desc_' + e.target.name);
+                    if (descEl) descEl.textContent = descText;
+                });
+            });
+        }
+
+        // 繪製強制的 3 個 OPA Sums 區塊
+        function renderOpaSums() {
+            const station = getSelectedStation();
+            if (!station) return;
+            const container = document.getElementById('opaSumsContainer');
+            const content = document.getElementById('opaSumsContent');
+            content.innerHTML = '';
+
+            const stages = ['OPA1', 'OPA2', 'OPA3'];
+            stages.forEach(stg => {
+                const sumKey = stg.toLowerCase() + '_summary';
+                const customSumText = station[sumKey] ? station[sumKey] : '本階段整體表現評估';
+
+                const sumDiv = document.createElement('div');
+                sumDiv.className = 'bg-blue-50 p-4 border border-blue-200 rounded-lg shadow-sm';
+                sumDiv.innerHTML = `
+                    <p class="text-base font-bold text-blue-900 mb-2">${stg} 總和評比：<span class="font-medium text-blue-800">${customSumText}</span></p>
+                    ${createTrustButtons(stg.toLowerCase() + '_sum_btn', true)}
+                `;
+                content.appendChild(sumDiv);
+            });
+
+            container.classList.remove('hidden');
+            setupTrustButtonListeners(container);
+        }
+
+        // 僅繪製細部 8 題
+        function checkAndRenderItems() {
+            const station = getSelectedStation();
+            const stage = getSelectedStage();
+            const container = document.getElementById('dynamicGradingItems');
+            const notice = document.getElementById('feedbackNotice');
+
+            if (!station || !stage) return;
+
+            container.innerHTML = '';
+
+            let items = [];
+            if (stage === 'OPA1') items = station.opa1_items;
+            else if (stage === 'OPA2') items = station.opa2_items;
+            else if (stage === 'OPA3') items = station.opa3_items;
+
+            let hasValidItem = false;
+            items.forEach((itemText, i) => {
+                if (!itemText || itemText.trim() === '') return;
+                hasValidItem = true;
+                const fieldNameItem = `${stage.toLowerCase()}_${i + 1}`;
+
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'bg-white p-4 border border-gray-100 rounded-lg shadow-sm';
+                itemDiv.innerHTML = `
+                    <p class="text-sm font-medium text-gray-800 mb-3">${i + 1}. ${itemText}</p>
+                    ${createTrustButtons(fieldNameItem, false)}
+                `;
+                container.appendChild(itemDiv);
+            });
+
+            if (!hasValidItem) {
+                const emptyMsg = document.createElement('p');
+                emptyMsg.className = 'text-gray-500 italic text-center p-4';
+                emptyMsg.textContent = '這個階段沒有設定具體評分細項。';
+                container.appendChild(emptyMsg);
+                notice.classList.add('hidden');
+            } else {
+                notice.classList.remove('hidden');
+            }
+
+            container.classList.remove('hidden');
+            setupTrustButtonListeners(container);
+        }
+
+        document.getElementById('gradingForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            // 防呆核心邏輯：驗證 Checkbox 是否為剛好 2 項
+            const ticked = document.querySelectorAll('input[name="aspect_cb"]:checked');
+            if (ticked.length !== 2) {
+                alert('【此次觀察面向選擇】請務必剛好勾選 2 項喔！\n(目前勾選了 ' + ticked.length + ' 項)');
+                return;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '處理中...';
+            btn.disabled = true;
+            btn.classList.add('opacity-75');
+
+            const formData = new FormData(e.target);
+            const studentJSON = formData.get('student');
+            if (!studentJSON) {
+                alert('請選擇學員');
+                resetBtn(btn, originalText);
+                return;
+            }
+            const studentObj = JSON.parse(studentJSON);
+            const stage = getSelectedStage();
+            const station = formData.get('station');
+
+            const data = {
+                student_id: studentObj.id,
+                student_name: studentObj.name,
+                station: station,
+                stage: stage,
+
+                opa1_sum: formData.get('opa1_sum_btn') || '',
+                opa2_sum: formData.get('opa2_sum_btn') || '',
+                opa3_sum: formData.get('opa3_sum_btn') || '',
+
+                opa1_items: [],
+                opa2_items: [],
+                opa3_items: [],
+
+                aspect1: ticked[0].value,
+                aspect2: ticked[1].value,
+                comment: formData.get('comment')
+            };
+
+            for (let i = 1; i <= 8; i++) {
+                data.opa1_items.push(formData.get(`opa1_${i}`) || '');
+                data.opa2_items.push(formData.get(`opa2_${i}`) || '');
+                data.opa3_items.push(formData.get(`opa3_${i}`) || '');
+            }
+
+            try {
+                const response = await fetch('/submit_grade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                const msgBox = document.getElementById('messageBox');
+                const msgIcon = document.getElementById('messageIcon');
+                const msgText = document.getElementById('messageText');
+
+                msgBox.classList.remove('hidden', 'bg-green-50', 'bg-red-50');
+                msgText.classList.remove('text-green-800', 'text-red-800');
+
+                if (result.success) {
+                    msgBox.classList.add('bg-green-50');
+                    msgText.classList.add('text-green-800');
+                    msgIcon.innerHTML = `<svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>`;
+                    msgText.textContent = '評分儲存成功！已寫入 Google Sheets。';
+                    e.target.reset();
+                    document.getElementById('dynamicGradingItems').classList.add('hidden');
+                    document.getElementById('requiredFields').classList.add('hidden');
+                    document.getElementById('stageContainer').classList.add('hidden');
+                    document.getElementById('opaSumsContainer').classList.add('hidden');
+                    document.getElementById('feedbackNotice').classList.add('hidden');
+
+                    document.querySelectorAll('input[name="station"], input[name="stage"]').forEach(r => r.checked = false);
+                    document.querySelectorAll('input[name="aspect_cb"]').forEach(c => c.checked = false);
+                } else {
+                    msgBox.classList.add('bg-red-50');
+                    msgText.classList.add('text-red-800');
+                    msgIcon.innerHTML = `<svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>`;
+                    msgText.textContent = '儲存失敗：' + (result.error || '發生未知錯誤');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('系統連線錯誤，請稍後再試。');
+            } finally {
+                resetBtn(btn, originalText);
+            }
+        });
+
+        function resetBtn(btn, text) {
+            btn.innerHTML = text;
+            btn.disabled = false;
+            btn.classList.remove('opacity-75');
+        }
+    </script>
+</body>
+
+</html>

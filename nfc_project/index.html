@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFC 簽到系統</title>
+</head>
+
+<body>
+
+    <h1>上班簽到系統</h1>
+
+    <button id="loginBtn">使用 Google 登入</button>
+
+    <script type="module">
+        // 1. 貼上 Firebase 的初始化程式碼
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+        import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-analytics.js";
+        const firebaseConfig = {
+            apiKey: "AIzaSyDt4PNBXFI7sPIDuBMRc42YkABAfCKk4W8",
+            authDomain: "attendance-system-3a062.firebaseapp.com",
+            projectId: "attendance-system-3a062",
+            storageBucket: "attendance-system-3a062.firebasestorage.app",
+            messagingSenderId: "32919493509",
+            appId: "1:32919493509:web:a42954562e33c2091082ec",
+            measurementId: "G-MQ1V5CL3VD"
+            // ...貼上你在 Firebase 後台看到的設定
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const provider = new GoogleAuthProvider();
+        const analytics = getAnalytics(app);
+        // 2. 綁定按鈕動作
+        document.getElementById('loginBtn').addEventListener('click', async () => {
+            try {
+                const result = await signInWithPopup(auth, provider);
+                alert("登入成功：" + result.user.displayName);
+            } catch (error) {
+                console.error(error);
+                alert("登入失敗，請查看控制台");
+            }
+        });
+    </script>
+</body>
+
+</html>
