@@ -66,6 +66,42 @@ def index():
         return render_template('dashboard.html', user=user)
     return render_template('login.html')
 
+import smtplib
+from email.message import EmailMessage
+import threading
+
+def send_attendance_alert_email(student_name, teacher_name, sub_room, action, timestamp, diff_minutes):
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_password = os.getenv("SENDER_PASSWORD")
+    notify_emails = os.getenv("NOTIFY_EMAILS")
+    
+    if not sender_email or not sender_password or not notify_emails:
+        print("未設定 Email 環境變數，跳過發信機制。")
+        return
+        
+    notify_list = [e.strip() for e in notify_emails.split(',')]
+    msg = EmailMessage()
+    
+    if action == 'check_in':
+        subject = f"⚠️ [遲到警報] 學員出勤異常通知"
+        body = f"系統偵測到以下學員遭遇「遲到」異常：\n\n【學員姓名】：{student_name}\n【簽到時間】：{timestamp} (遲到約 {diff_minutes} 分鐘)\n【檢查室別】：{sub_room}\n【紀錄教師】：{teacher_name}\n\n※ 此為系統自動發送之信件，請勿回覆。"
+    else:
+        subject = f"⚠️ [早退警報] 學員出勤異常通知"
+        body = f"系統偵測到以下學員遭遇「早退」異常：\n\n【學員姓名】：{student_name}\n【簽退時間】：{timestamp} (早退約 {diff_minutes} 分鐘)\n【檢查室別】：{sub_room}\n【紀錄教師】：{teacher_name}\n\n※ 此為系統自動發送之信件，請勿回覆。"
+        
+    msg.set_content(body)
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = ", ".join(notify_list)
+    
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(sender_email, sender_password)
+            smtp.send_message(msg)
+            print(f"成功發送出勤警報給 {notify_emails}")
+    except Exception as e:
+        print(f"發送出勤警報失敗: {e}")
+
 @app.route('/login')
 def login():
     redirect_uri = url_for('authorize', _external=True)
@@ -174,13 +210,40 @@ def submit_attendance():
         
         if not student_name or not sub_room or not action:
             return jsonify({'success': False, 'error': '資料不齊全'}), 400
+            
+        now_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        cur_time = now_dt.time()
+        
+        checkin_std = datetime.time(8, 30, 0)
+        checkout_std = datetime.time(17, 0, 0)
+        
+        alert_needed = False
+        time_diff = 0
         
         if action == 'check_in':
+            if cur_time > checkin_std:
+                dt_std = datetime.datetime.combine(now_dt.date(), checkin_std)
+                diff_minutes = int((now_dt - dt_std).total_seconds() / 60)
+                if diff_minutes > 0:
+                    alert_needed = True
+                    time_diff = diff_minutes
+                    
             row = [student_name, teacher_name, sub_room, timestamp, '']
             sheet.append_row(row, table_range="A1")
+            
+            if alert_needed:
+                threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
+                return jsonify({'success': True, 'msg': f'✅ 簽到成功！(⚠️ 系統偵測到遲到 {time_diff} 分鐘，已發信通報)'})
             return jsonify({'success': True, 'msg': '✅ 簽到成功！'})
             
         elif action == 'check_out':
+            if cur_time < checkout_std:
+                dt_std = datetime.datetime.combine(now_dt.date(), checkout_std)
+                diff_minutes = int((dt_std - now_dt).total_seconds() / 60)
+                if diff_minutes > 0:
+                    alert_needed = True
+                    time_diff = diff_minutes
+                    
             all_vals = sheet.get_all_values()
             
             # 從最底下往上找該學員該次簽到
@@ -196,12 +259,18 @@ def submit_attendance():
             if found_idx != -1:
                 row_num = found_idx + 1
                 sheet.update_cell(row_num, 5, timestamp)
+                if alert_needed:
+                    threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
+                    return jsonify({'success': True, 'msg': f'📤 簽退成功！(⚠️ 系統偵測到早退 {time_diff} 分鐘，已通報)'})
                 return jsonify({'success': True, 'msg': '📤 簽退成功！'})
             else:
                 # 依指示：若檢查室不一致或找不到紀錄，強迫安插新的一列
                 row = [student_name, teacher_name, sub_room, '', timestamp]
                 sheet.append_row(row, table_range="A1")
-                return jsonify({'success': True, 'msg': '⚠️ 查無相對應的有效簽到紀錄，已將此次強制簽退並新建為獨立新列！'})
+                if alert_needed:
+                    threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
+                    return jsonify({'success': True, 'msg': f'⚠️ 無有效簽到紀錄強制簽退！(且早退 {time_diff} 分，已通報)'})
+                return jsonify({'success': True, 'msg': '⚠️ 查無相對應的有效簽到紀錄，已新建獨立新列！'})
             
         else:
             return jsonify({'success': False, 'error': '未知的操作類型。'}), 400
