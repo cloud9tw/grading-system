@@ -150,7 +150,7 @@ def submit_attendance():
         sheet = doc.worksheet('上下班打卡記錄')
         
         import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
         teacher_email = user.get('email', '')
         teacher_name = teacher_email # default
         
@@ -342,7 +342,7 @@ def submit_grade():
         sheet = doc.worksheet('評分記錄')
         
         import datetime
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
         teacher_email = user.get('email', '')
         teacher_name = teacher_email # default
         
