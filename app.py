@@ -113,8 +113,13 @@ def get_config():
             name = str(rec.get('站別', ''))
             if not name:
                 continue
+                
+            body_parts_str = str(rec.get('檢查部位', ''))
+            body_parts = [p.strip() for p in body_parts_str.replace('，', ',').split(',')] if body_parts_str else []
+            
             station_data = {
                 'name': name,
+                'body_parts': body_parts,
                 'opa1_summary': str(rec.get('OPA1總和評比', '')),
                 'opa2_summary': str(rec.get('OPA2總和評比', '')),
                 'opa3_summary': str(rec.get('OPA3總和評比', '')),
@@ -150,26 +155,39 @@ def get_config():
             # 取得所有評分紀錄
             all_records = sheet_records.get_all_records()
             for rec in all_records:
-                sid = str(rec.get('ID', '')).strip()
+                sid = str(rec.get('學員ID', '')).strip()
+                if not sid:
+                    sid = str(rec.get('ID', '')).strip()
+                
                 stn = str(rec.get('站別', '')).strip()
+                bpart = str(rec.get('檢查部位', '')).strip()
+                
                 if sid and stn:
                     if sid not in student_stats:
-                        student_stats[sid] = {'stations': {}, 'aspects': {}}
+                        student_stats[sid] = {'stations': {}}
                     if stn not in student_stats[sid]['stations']:
-                        student_stats[sid]['stations'][stn] = 0
-                    student_stats[sid]['stations'][stn] += 1
+                        student_stats[sid]['stations'][stn] = {
+                            'count': 0,
+                            'body_parts': {},
+                            'aspects': {}
+                        }
                     
-                    # 尋找所有名稱內包含 '面向選擇' 的欄位並統計其次數
+                    student_stats[sid]['stations'][stn]['count'] += 1
+                    
+                    if bpart:
+                        if bpart not in student_stats[sid]['stations'][stn]['body_parts']:
+                            student_stats[sid]['stations'][stn]['body_parts'][bpart] = 0
+                        student_stats[sid]['stations'][stn]['body_parts'][bpart] += 1
+                    
                     for k, v in rec.items():
                         if '面向選擇' in str(k) and str(v).strip():
                             import re
-                            # 擷取開頭的數字作為代號
                             m = re.match(r'^\d+', str(v).strip())
                             if m:
                                 asp_num = m.group()
-                                if asp_num not in student_stats[sid]['aspects']:
-                                    student_stats[sid]['aspects'][asp_num] = 0
-                                student_stats[sid]['aspects'][asp_num] += 1
+                                if asp_num not in student_stats[sid]['stations'][stn]['aspects']:
+                                    student_stats[sid]['stations'][stn]['aspects'][asp_num] = 0
+                                student_stats[sid]['stations'][stn]['aspects'][asp_num] += 1
         except Exception as sheet_err:
             print("Error parsing 評分記錄 for stats:", sheet_err)
             
@@ -219,10 +237,11 @@ def submit_grade():
         except Exception as e:
             print("Error loading teacher names:", e)
         
-        # 收集 34 欄資料
+        # 收集資料
         student_id = data.get('student_id', '')
         student_name = data.get('student_name', '')
         station = data.get('station', '')
+        body_part = data.get('body_part', '')
         
         # 總和評比
         opa1_sum = data.get('opa1_sum', '')
@@ -247,6 +266,7 @@ def submit_grade():
             student_id,
             student_name,
             station,
+            body_part,
             timestamp,
             teacher_name,
             opa1_sum,
