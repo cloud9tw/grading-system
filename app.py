@@ -214,7 +214,7 @@ def submit_attendance():
         now_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
         cur_time = now_dt.time()
         
-        checkin_std = datetime.time(8, 30, 0)
+        checkin_std = datetime.time(8, 40, 0)
         checkout_std = datetime.time(17, 0, 0)
         
         alert_needed = False
