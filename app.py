@@ -85,6 +85,130 @@ def logout():
     session.pop('user', None)
     return redirect('/')
 
+@app.route('/attendance')
+def attendance():
+    user = session.get('user')
+    if not user:
+        return redirect('/login')
+    return render_template('attendance.html', user=user)
+
+@app.route('/api/attendance_config', methods=['GET'])
+def get_attendance_config():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        gc = get_gspread_client()
+        if not gc:
+            return jsonify({'success': False, 'error': 'Google Sheets backend not configured.'}), 500
+            
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        # 取得學員名單
+        sheet_students = doc.worksheet('學員名單')
+        students_records = sheet_students.get_all_records()
+        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
+        
+        # 取得檢查室大項與次項目
+        sheet_rooms = doc.worksheet('檢查室清單')
+        rooms_data = sheet_rooms.get_all_values()
+        departments = []
+        for row in rooms_data:
+            if not row or not str(row[0]).strip():
+                continue
+            main_dept = str(row[0]).strip()
+            sub_rooms = [str(col).strip() for col in row[1:] if str(col).strip()]
+            departments.append({
+                'main': main_dept,
+                'sub_rooms': sub_rooms
+            })
+            
+        return jsonify({
+            'success': True,
+            'students': students,
+            'departments': departments
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/submit_attendance', methods=['POST'])
+def submit_attendance():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    try:
+        gc = get_gspread_client()
+        if not gc:
+            return jsonify({'success': False, 'error': 'Google Sheets backend not configured.'}), 500
+            
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet = doc.worksheet('上下班打卡記錄')
+        
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        teacher_email = user.get('email', '')
+        teacher_name = teacher_email # default
+        
+        # 查詢教師名單中的姓名
+        try:
+            sheet_teachers = doc.worksheet('教師名單')
+            teachers_data = sheet_teachers.get_all_records()
+            for rec in teachers_data:
+                t_email = str(rec.get('教師_Email', '')).strip().lower()
+                if t_email == teacher_email.lower():
+                    n = str(rec.get('教師姓名', '')).strip()
+                    if n:
+                        teacher_name = n
+                    break
+        except:
+            pass
+            
+        student_name = data.get('student_name', '').split(' (')[0].strip()
+        sub_room = data.get('sub_room', '')
+        action = data.get('action', '') # 'check_in' or 'check_out'
+        
+        if not student_name or not sub_room or not action:
+            return jsonify({'success': False, 'error': '資料不齊全'}), 400
+        
+        if action == 'check_in':
+            row = [student_name, teacher_name, sub_room, timestamp, '']
+            sheet.append_row(row, table_range="A1")
+            return jsonify({'success': True, 'msg': '✅ 簽到成功！'})
+            
+        elif action == 'check_out':
+            all_vals = sheet.get_all_values()
+            
+            # 從最底下往上找該學員該次簽到
+            found_idx = -1
+            for i in range(len(all_vals)-1, 0, -1):
+                r = all_vals[i]
+                if len(r) >= 3 and str(r[0]).strip() == student_name and str(r[2]).strip() == sub_room:
+                    # 如果簽退欄還沒填過
+                    if len(r) < 5 or not str(r[4]).strip():
+                        found_idx = i
+                        break
+            
+            if found_idx != -1:
+                row_num = found_idx + 1
+                sheet.update_cell(row_num, 5, timestamp)
+                return jsonify({'success': True, 'msg': '📤 簽退成功！'})
+            else:
+                # 依指示：若檢查室不一致或找不到紀錄，強迫安插新的一列
+                row = [student_name, teacher_name, sub_room, '', timestamp]
+                sheet.append_row(row, table_range="A1")
+                return jsonify({'success': True, 'msg': '⚠️ 查無相對應的有效簽到紀錄，已將此次強制簽退並新建為獨立新列！'})
+            
+        else:
+            return jsonify({'success': False, 'error': '未知的操作類型。'}), 400
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     user = session.get('user')

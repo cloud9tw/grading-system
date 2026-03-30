@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學員簽到退系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen">
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <svg class="w-8 h-8 text-blue-600 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z">
+                        </path>
+                    </svg>
+                    <span class="font-bold text-xl text-gray-900">當值簽到退紀錄</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <img class="h-8 w-8 rounded-full" src="{{ user.picture }}" alt="User avatar"
+                            onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}'">
+                        <span class="text-sm font-medium text-gray-700">{{ user.name }} ({{ user.email }})</span>
+                    </div>
+                    <a href="/logout"
+                        class="text-sm font-medium text-red-600 hover:text-red-800 transition-colors">登出</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-3xl mx-auto py-10 px-4 sm:px-6 lg:px-8">
+        
+        <!-- 系統切換導覽列 -->
+        <div class="flex space-x-4 mb-6">
+            <a href="/" class="flex-1 text-center py-3 bg-white text-gray-700 font-semibold border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition">📝 臨床教學評量</a>
+            <a href="/attendance" class="flex-1 text-center py-3 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 transition">⏱️ 學員簽到退</a>
+        </div>
+
+        <div class="bg-white px-8 py-8 shadow-sm rounded-xl border border-gray-200">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-6">填寫出勤紀錄</h2>
+
+            <div id="loadingConfig" class="text-center py-8 text-gray-500 flex flex-col items-center">
+                <svg class="animate-spin h-8 w-8 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none"
+                    viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                    </path>
+                </svg>
+                <p>正在載入系統設定檔，請稍候...</p>
+            </div>
+
+            <form id="attendanceForm" class="hidden space-y-6">
+                <!-- 選擇學員 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">請選擇受評學員 (下拉式選單支援文字搜尋)</label>
+                    <select id="studentSelect" name="student" required
+                        class="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-lg px-4 py-3">
+                        <option value="" disabled selected>-- 點擊展開或輸入關鍵字搜尋學員 --</option>
+                    </select>
+                </div>
+
+                <!-- 選擇大科室 -->
+                <div class="mt-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">大科分類</label>
+                    <div id="departmentContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <!-- 動態插入 -->
+                    </div>
+                </div>
+
+                <!-- 選擇次分科檢查室 -->
+                <div id="subRoomSection" class="hidden mt-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2 border-t pt-6 border-gray-200">子檢查室 (請先選大科)</label>
+                    <div id="subRoomContainer" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        <!-- 動態插入 -->
+                    </div>
+                </div>
+
+                <!-- 提交訊息區塊 -->
+                <div id="messageBox" class="hidden p-4 rounded-lg flex items-start">
+                    <div id="messageIcon" class="flex-shrink-0 mt-0.5"></div>
+                    <div class="ml-3 text-sm font-medium" id="messageText"></div>
+                </div>
+
+                <!-- 提交按鈕區塊 -->
+                <div class="flex space-x-4 pt-6 mt-6 border-t border-gray-200">
+                    <button type="button" id="btnCheckIn" onclick="submitAttendance('check_in')"
+                        class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition-transform transform active:scale-95 text-xl flex items-center justify-center relative overflow-hidden">
+                        📥 簽到 (Check-in)
+                    </button>
+                    <button type="button" id="btnCheckOut" onclick="submitAttendance('check_out')"
+                        class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-4 rounded-xl shadow-lg transition-transform transform active:scale-95 text-xl flex items-center justify-center relative overflow-hidden">
+                        📤 簽退 (Check-out)
+                    </button>
+                </div>
+            </form>
+        </div>
+    </main>
+
+    <script>
+        let configData = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch('/api/attendance_config');
+                const data = await res.json();
+
+                if (data.success) {
+                    configData = data;
+                    initForm();
+                } else {
+                    showError('無法載入系統設定：' + data.error);
+                }
+            } catch (err) {
+                showError('載入系統設定發生網路錯誤。');
+            }
+        });
+
+        function showError(msg) {
+            document.getElementById('loadingConfig').innerHTML = `<p class="text-red-500 border border-red-200 p-4 rounded bg-red-50">${msg}</p>`;
+        }
+
+        function initForm() {
+            document.getElementById('loadingConfig').classList.add('hidden');
+            document.getElementById('attendanceForm').classList.remove('hidden');
+
+            // 1. 載入學生
+            const studentSelect = document.getElementById('studentSelect');
+            configData.students.forEach(student => {
+                const opt = document.createElement('option');
+                opt.value = student.name;
+                opt.textContent = `${student.name} (${student.id})`;
+                studentSelect.appendChild(opt);
+            });
+
+            // 2. 載入大科
+            const deptContainer = document.getElementById('departmentContainer');
+            configData.departments.forEach((dept, index) => {
+                const label = document.createElement('label');
+                label.className = "relative flex items-center justify-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200 shadow-sm";
+                label.innerHTML = `
+                    <input type="radio" name="department" value="${index}" class="sr-only peer" required>
+                    <span class="text-base font-semibold text-gray-900 peer-checked:text-blue-700 text-center">${dept.main}</span>
+                    <div class="absolute inset-0 border-2 border-transparent rounded-lg peer-checked:border-blue-500 pointer-events-none"></div>
+                `;
+                deptContainer.appendChild(label);
+            });
+
+            // 大科切換邏輯
+            document.querySelectorAll('input[name="department"]').forEach(r => {
+                r.addEventListener('change', renderSubRooms);
+            });
+        }
+
+        function renderSubRooms() {
+            const checkedIndex = document.querySelector('input[name="department"]:checked').value;
+            const subRoomObj = configData.departments[checkedIndex];
+            
+            const section = document.getElementById('subRoomSection');
+            const container = document.getElementById('subRoomContainer');
+            container.innerHTML = '';
+
+            if (subRoomObj && subRoomObj.sub_rooms.length > 0) {
+                subRoomObj.sub_rooms.forEach((room) => {
+                    const label = document.createElement('label');
+                    label.className = "relative flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-indigo-500 peer-checked:bg-indigo-50 transition-all border-gray-200 shadow-sm";
+                    label.innerHTML = `
+                        <input type="radio" name="sub_room" value="${room}" class="sr-only peer" required>
+                        <span class="text-sm font-medium text-gray-900 peer-checked:text-indigo-700 text-center">${room}</span>
+                        <div class="absolute inset-0 border-2 border-transparent rounded-lg peer-checked:border-indigo-500 pointer-events-none"></div>
+                    `;
+                    container.appendChild(label);
+                });
+                section.classList.remove('hidden');
+            } else {
+                section.classList.add('hidden');
+            }
+        }
+
+        function resetBtn(btn, text) {
+            btn.innerHTML = text;
+            btn.disabled = false;
+            btn.classList.remove('opacity-75');
+            document.getElementById('btnCheckIn').disabled = false;
+            document.getElementById('btnCheckOut').disabled = false;
+        }
+
+        async function submitAttendance(action) {
+            const student = document.getElementById('studentSelect').value;
+            if (!student) {
+                alert('請先選擇學員！');
+                return;
+            }
+
+            const subRoomInput = document.querySelector('input[name="sub_room"]:checked');
+            if (!subRoomInput) {
+                alert('請先選擇次分科檢查室！');
+                return;
+            }
+
+            // 按鈕視覺回饋
+            const targetBtn = action === 'check_in' ? document.getElementById('btnCheckIn') : document.getElementById('btnCheckOut');
+            const originalText = targetBtn.innerHTML;
+            
+            document.getElementById('btnCheckIn').disabled = true;
+            document.getElementById('btnCheckOut').disabled = true;
+            targetBtn.innerHTML = '傳送中...';
+            targetBtn.classList.add('opacity-75');
+
+            const data = {
+                student_name: student,
+                sub_room: subRoomInput.value,
+                action: action
+            };
+
+            try {
+                const response = await fetch('/submit_attendance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+
+                const msgBox = document.getElementById('messageBox');
+                const msgIcon = document.getElementById('messageIcon');
+                const msgText = document.getElementById('messageText');
+
+                msgBox.classList.remove('hidden', 'bg-green-50', 'bg-red-50', 'bg-yellow-50');
+                msgText.classList.remove('text-green-800', 'text-red-800', 'text-yellow-800');
+
+                if (result.success) {
+                    if (result.msg.includes('新建為獨立新列')) {
+                        msgBox.classList.add('bg-yellow-50');
+                        msgText.classList.add('text-yellow-800');
+                        msgIcon.innerHTML = `<svg class="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" /></svg>`;
+                    } else {
+                        msgBox.classList.add('bg-green-50');
+                        msgText.classList.add('text-green-800');
+                        msgIcon.innerHTML = `<svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>`;
+                    }
+                    
+                    msgText.textContent = result.msg;
+                    
+                    // 只有成功才幫他清空表單，方便下一個學生操作
+                    document.getElementById('attendanceForm').reset();
+                    document.getElementById('subRoomSection').classList.add('hidden');
+                } else {
+                    msgBox.classList.add('bg-red-50');
+                    msgText.classList.add('text-red-800');
+                    msgIcon.innerHTML = `<svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" /></svg>`;
+                    msgText.textContent = result.error || '不明錯誤';
+                }
+            } catch (error) {
+                console.error('Error submitting:', error);
+                alert('系統錯誤，請確認網路連線或稍後再試。');
+            } finally {
+                resetBtn(targetBtn, originalText);
+            }
+        }
+    </script>
+</body>
+
+</html>
