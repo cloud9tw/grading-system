@@ -101,8 +101,9 @@
 
                 <!-- 學習階段 -->
                 <div id="stageContainer" class="hidden border-t pt-4 mt-6 border-gray-200">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">OPA (Observable Practice Activity)
-                        "請點開參考評分項目"</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">OPA (Observable Practice
+                        Activity)</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">"請點開參考評分項目"</label>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <label
                             class="relative flex items-center justify-center p-4 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-blue-500 peer-checked:bg-blue-50 transition-all border-gray-200">
@@ -306,12 +307,12 @@
             const section = document.getElementById('bodyPartContainerSection');
             const container = document.getElementById('bodyPartContainer');
             container.innerHTML = '';
-            
+
             if (!station || !station.body_parts || station.body_parts.length === 0) {
                 section.classList.add('hidden');
                 return;
             }
-            
+
             station.body_parts.forEach((bp) => {
                 const label = document.createElement('label');
                 label.className = "relative flex items-center justify-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 peer-checked:border-green-500 peer-checked:bg-green-50 transition-all border-gray-200";
@@ -334,11 +335,11 @@
                 statsDiv.classList.add('hidden');
                 return;
             }
-            
+
             const studentObj = JSON.parse(studentId);
             const stationName = stationChecked.value;
             const studentData = configData.student_stats[studentObj.id];
-            
+
             if (!studentData || !studentData.stations || !studentData.stations[stationName]) {
                 statsDiv.innerHTML = `<span class="text-gray-500 italic text-sm">此學員目前在 ${stationName} 尚無評分紀錄</span>`;
                 statsDiv.classList.remove('hidden');
@@ -347,14 +348,14 @@
 
             const stStats = studentData.stations[stationName];
             let html = `<div class="text-sm space-y-3">`;
-            
+
             html += `<div class="flex items-center gap-2"><span class="block w-2 h-2 bg-blue-500 rounded-full"></span><p class="font-semibold text-gray-800">過去評核總次數： <span class="text-blue-600 text-lg">${stStats.count}</span> 次</p></div>`;
-            
+
             if (stStats.body_parts && Object.keys(stStats.body_parts).length > 0) {
                 const partsStr = Object.entries(stStats.body_parts).map(([p, c]) => `${p} ${c}次`).join('、');
                 html += `<p class="text-gray-700 pl-4"><span class="font-medium">曾經受檢部位：</span> ${partsStr}</p>`;
             }
-            
+
             if (stStats.aspects && Object.keys(stStats.aspects).length > 0) {
                 html += `<div class="pl-4 mt-2">`;
                 html += `<p class="font-medium text-gray-700 mb-1">各面向累計回饋：</p>`;
@@ -368,7 +369,7 @@
                 }
                 html += `</ul></div>`;
             }
-            
+
             html += `</div>`;
             statsDiv.innerHTML = html;
             statsDiv.classList.remove('hidden');
@@ -484,12 +485,12 @@
             if (!stage) return;
             document.getElementById('dynamicGradingItems').classList.remove('hidden');
             document.getElementById('feedbackNotice').classList.remove('hidden');
-            
+
             ['OPA1', 'OPA2', 'OPA3'].forEach(s => {
                 const el = document.getElementById(`items_${s}`);
                 if (el) el.classList.add('hidden');
             });
-            
+
             const activeEl = document.getElementById(`items_${stage}`);
             if (activeEl) activeEl.classList.remove('hidden');
         }
@@ -521,7 +522,7 @@
             const bodyPartInput = document.querySelector('input[name="body_part"]:checked');
             const stationObj = getSelectedStation();
             const body_part = bodyPartInput ? bodyPartInput.value : '';
-            
+
             if (stationObj && stationObj.body_parts && stationObj.body_parts.length > 0 && !body_part) {
                 alert('請選擇檢查部位');
                 resetBtn(btn, originalText);
