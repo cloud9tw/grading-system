@@ -380,7 +380,7 @@
             return checked ? checked.value : null;
         }
 
-        // 建立 8 個信賴等級按紐群組
+        // 建立 8 個信賴等級按鈕群組
         function createTrustButtons(groupName, required = true) {
             let html = `<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 trust-btn-group" id="group_${groupName}">`;
             configData.trust_levels.forEach((lvl, idx) => {
@@ -519,6 +519,10 @@
                 return;
             }
             const studentObj = JSON.parse(studentJSON);
+            
+            const stage = getSelectedStage();
+            const station = formData.get('station');
+            
             const bodyPartInput = document.querySelector('input[name="body_part"]:checked');
             const stationObj = getSelectedStation();
             const body_part = bodyPartInput ? bodyPartInput.value : '';
