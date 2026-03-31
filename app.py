@@ -84,7 +84,19 @@ def index():
         session['next_url'] = f"/?student_id={student_id}"
         
     if user:
-        return render_template('dashboard.html', user=user)
+        current_role = session.get('current_role', 'teacher')
+        roles = session.get('roles', [])
+        if current_role == 'student':
+            import urllib.parse
+            student_info = session.get('student_info', {})
+            s_id = student_info.get('id', '')
+            root_url = request.url_root
+            target_url = f"{root_url}?student_id={s_id}"
+            qr_img_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(target_url)}"
+            return render_template('student_dashboard.html', user=user, student_info=student_info, qr_img_url=qr_img_url, roles=roles)
+        else:
+            return render_template('dashboard.html', user=user, roles=roles)
+            
     return render_template('login.html')
 
 import smtplib
@@ -135,8 +147,70 @@ def authorize():
     if not user_info:
         user_info = google.userinfo()
     session['user'] = user_info
+    
+    user_email = user_info.get('email', '').strip().lower()
+    roles = []
+    student_info = None
+    
+    try:
+        gc = get_gspread_client()
+        if gc:
+            sheet_id = os.getenv("GOOGLE_SHEET_ID")
+            doc = gc.open_by_key(sheet_id)
+            
+            # Check Teacher
+            sheet_teachers = doc.worksheet('教師名單')
+            teachers_records = safe_get_all_records(sheet_teachers)
+            for t in teachers_records:
+                t_email = str(t.get('教師_Email', '')).strip().lower()
+                if t_email == user_email:
+                    roles.append('teacher')
+                    break
+                    
+            # Check Student
+            sheet_students = doc.worksheet('學員名單')
+            students_records = safe_get_all_records(sheet_students)
+            for s in students_records:
+                s_email = str(s.get('Email', '')).strip().lower()
+                if s_email == user_email:
+                    roles.append('student')
+                    student_info = {'id': str(s.get('學生ID', '')), 'name': str(s.get('姓名', ''))}
+                    break
+    except Exception as e:
+        print("Role check error:", e)
+        
+    session['roles'] = roles
+    if student_info:
+        session['student_info'] = student_info
+        
     next_url = session.pop('next_url', '/')
+    
+    # Determine current role
+    default_role = 'teacher'
+    if 'student' in roles:
+        default_role = 'student'
+        
+    # If they scanned a QR code string, force teacher
+    if 'student_id=' in next_url and 'teacher' in roles:
+        default_role = 'teacher'
+        
+    session['current_role'] = default_role
+    
     return redirect(next_url)
+
+@app.route('/switch_role', methods=['POST'])
+def switch_role():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    roles = session.get('roles', [])
+    current = session.get('current_role', 'teacher')
+    
+    if 'student' in roles and 'teacher' in roles:
+        session['current_role'] = 'teacher' if current == 'student' else 'student'
+        return jsonify({'success': True})
+    return jsonify({'success': False, 'error': '無切換權限'})
 
 @app.route('/logout')
 def logout():
@@ -148,7 +222,7 @@ def attendance():
     user = session.get('user')
     if not user:
         return redirect('/login')
-    return render_template('attendance.html', user=user)
+    return render_template('attendance.html', user=user, roles=session.get('roles', []))
 
 @app.route('/qrcodes')
 def qrcodes():
@@ -601,6 +675,59 @@ def submit_grade():
         sheet.append_row(row, table_range="A1")
         
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/student_stats', methods=['GET'])
+def get_student_stats():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+    if session.get('current_role') != 'student':
+        return jsonify({'success': False, 'error': 'Forbidden: Not acting as student'}), 403
+        
+    student_info = session.get('student_info')
+    if not student_info:
+        return jsonify({'success': False, 'error': 'No student info found.'}), 400
+        
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet = doc.worksheet('評分記錄')
+        all_vals = sheet.get_all_values()
+        
+        records_by_station = {}
+        target_id = student_info['id']
+        
+        for r in all_vals[1:]:
+            if len(r) > 8 and str(r[0]).strip() == target_id:
+                station = str(r[2]).strip()
+                time_str = str(r[4]).strip()
+                opa1 = str(r[6]).strip()
+                opa2 = str(r[7]).strip()
+                opa3 = str(r[8]).strip()
+                
+                def to_int(v):
+                    try: return int(v)
+                    except: return None
+                        
+                pt = {
+                    'time': time_str,
+                    'opa1': to_int(opa1),
+                    'opa2': to_int(opa2),
+                    'opa3': to_int(opa3)
+                }
+                
+                if station not in records_by_station:
+                    records_by_station[station] = []
+                records_by_station[station].append(pt)
+                
+        for st in records_by_station:
+            records_by_station[st].sort(key=lambda x: x['time'])
+            
+        return jsonify({'success': True, 'data': records_by_station})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
