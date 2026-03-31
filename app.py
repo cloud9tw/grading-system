@@ -30,6 +30,22 @@ google = oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
 )
 
+def safe_get_all_records(worksheet):
+    data = worksheet.get_all_values()
+    if not data:
+        return []
+    headers = data[0]
+    records = []
+    for row in data[1:]:
+        record = {}
+        for i, h in enumerate(headers):
+            key = str(h).strip()
+            if key:
+                val = row[i] if i < len(row) else ''
+                record[key] = val
+        records.append(record)
+    return records
+
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
@@ -148,7 +164,7 @@ def qrcodes():
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         sheet_students = doc.worksheet('學員名單')
-        students_records = sheet_students.get_all_records()
+        students_records = safe_get_all_records(sheet_students)
         students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
         
         # request.url_root returns something like 'https://example.com/'
@@ -178,13 +194,13 @@ def get_attendance_config():
         
         # 取得學員名單
         sheet_students = doc.worksheet('學員名單')
-        students_records = sheet_students.get_all_records()
+        students_records = safe_get_all_records(sheet_students)
         students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
         
         # 取得教師名單
         try:
             sheet_teachers = doc.worksheet('教師名單')
-            teachers_records = sheet_teachers.get_all_records()
+            teachers_records = safe_get_all_records(sheet_teachers)
             teachers = [{'name': str(rec.get('教師姓名', '')).strip()} for rec in teachers_records if str(rec.get('教師姓名', '')).strip()]
         except Exception:
             teachers = []
@@ -236,7 +252,7 @@ def submit_attendance():
         # 查詢教師名單中的姓名
         try:
             sheet_teachers = doc.worksheet('教師名單')
-            teachers_data = sheet_teachers.get_all_records()
+            teachers_data = safe_get_all_records(sheet_teachers)
             for rec in teachers_data:
                 t_email = str(rec.get('教師_Email', '')).strip().lower()
                 if t_email == teacher_email.lower():
@@ -338,7 +354,7 @@ def check_absent():
         
         # 取得所有學員
         sheet_students = doc.worksheet('學員名單')
-        students_records = sheet_students.get_all_records()
+        students_records = safe_get_all_records(sheet_students)
         all_students = [str(rec.get('姓名', '')).strip() for rec in students_records if str(rec.get('姓名', '')).strip()]
         if not all_students:
             return jsonify({'success': True, 'msg': 'No students in roster'})
@@ -405,12 +421,12 @@ def get_config():
         # 取得學員名單
         sheet_students = doc.worksheet('學員名單')
         # [學生ID, 姓名, email]
-        students_records = sheet_students.get_all_records()
+        students_records = safe_get_all_records(sheet_students)
         students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
         
         # 取得站別OPA細項
         sheet_stations = doc.worksheet('站別OPA細項')
-        stations_records = sheet_stations.get_all_records()
+        stations_records = safe_get_all_records(sheet_stations)
         stations = []
         for rec in stations_records:
             name = str(rec.get('站別', ''))
@@ -436,7 +452,7 @@ def get_config():
             
         # 取得信賴等級
         sheet_trust = doc.worksheet('信賴等級描述及轉換')
-        trust_records = sheet_trust.get_all_records()
+        trust_records = safe_get_all_records(sheet_trust)
         trust_levels = []
         for rec in trust_records:
             score = str(rec.get('分數', '')).strip()
@@ -456,7 +472,7 @@ def get_config():
         try:
             sheet_records = doc.worksheet('評分記錄')
             # 取得所有評分紀錄
-            all_records = sheet_records.get_all_records()
+            all_records = safe_get_all_records(sheet_records)
             for rec in all_records:
                 sid = str(rec.get('學員ID', '')).strip()
                 if not sid:
@@ -528,7 +544,7 @@ def submit_grade():
         # 查詢教師名單中的姓名
         try:
             sheet_teachers = doc.worksheet('教師名單')
-            teachers_data = sheet_teachers.get_all_records()
+            teachers_data = safe_get_all_records(sheet_teachers)
             for rec in teachers_data:
                 # 欄位： 教師_Email, 教師姓名
                 t_email = str(rec.get('教師_Email', '')).strip().lower()
