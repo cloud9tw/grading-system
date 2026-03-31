@@ -147,6 +147,14 @@ def get_attendance_config():
         students_records = sheet_students.get_all_records()
         students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
         
+        # 取得教師名單
+        try:
+            sheet_teachers = doc.worksheet('教師名單')
+            teachers_records = sheet_teachers.get_all_records()
+            teachers = [{'name': str(rec.get('教師姓名', '')).strip()} for rec in teachers_records if str(rec.get('教師姓名', '')).strip()]
+        except Exception:
+            teachers = []
+        
         # 取得檢查室大項與次項目
         sheet_rooms = doc.worksheet('檢查室清單')
         rooms_data = sheet_rooms.get_all_values()
@@ -164,6 +172,7 @@ def get_attendance_config():
         return jsonify({
             'success': True,
             'students': students,
+            'teachers': teachers,
             'departments': departments
         })
     except Exception as e:
@@ -207,6 +216,7 @@ def submit_attendance():
         student_name = data.get('student_name', '').split(' (')[0].strip()
         sub_room = data.get('sub_room', '')
         action = data.get('action', '') # 'check_in' or 'check_out'
+        co_teacher = data.get('co_teacher', '') # Optional Co-teacher
         
         if not student_name or not sub_room or not action:
             return jsonify({'success': False, 'error': '資料不齊全'}), 400
@@ -228,7 +238,7 @@ def submit_attendance():
                     alert_needed = True
                     time_diff = diff_minutes
                     
-            row = [student_name, teacher_name, sub_room, timestamp, '']
+            row = [student_name, teacher_name, co_teacher, sub_room, timestamp, '']
             sheet.append_row(row, table_range="A1")
             
             if alert_needed:
@@ -250,22 +260,22 @@ def submit_attendance():
             found_idx = -1
             for i in range(len(all_vals)-1, 0, -1):
                 r = all_vals[i]
-                if len(r) >= 3 and str(r[0]).strip() == student_name and str(r[2]).strip() == sub_room:
-                    # 如果簽退欄還沒填過
-                    if len(r) < 5 or not str(r[4]).strip():
+                if len(r) >= 4 and str(r[0]).strip() == student_name and str(r[3]).strip() == sub_room:
+                    # 如果簽退欄還沒填過 (第六欄 index 5)
+                    if len(r) < 6 or not str(r[5]).strip():
                         found_idx = i
                         break
             
             if found_idx != -1:
                 row_num = found_idx + 1
-                sheet.update_cell(row_num, 5, timestamp)
+                sheet.update_cell(row_num, 6, timestamp)
                 if alert_needed:
                     threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
                     return jsonify({'success': True, 'msg': f'📤 簽退成功！(⚠️ 系統偵測到早退 {time_diff} 分鐘，已通報)'})
                 return jsonify({'success': True, 'msg': '📤 簽退成功！'})
             else:
                 # 依指示：若檢查室不一致或找不到紀錄，強迫安插新的一列
-                row = [student_name, teacher_name, sub_room, '', timestamp]
+                row = [student_name, teacher_name, co_teacher, sub_room, '', timestamp]
                 sheet.append_row(row, table_range="A1")
                 if alert_needed:
                     threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
@@ -275,6 +285,72 @@ def submit_attendance():
         else:
             return jsonify({'success': False, 'error': '未知的操作類型。'}), 400
             
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/cron/check_absent', methods=['GET'])
+def check_absent():
+    try:
+        now_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        if now_dt.weekday() >= 5: # 週末不寄信
+            return jsonify({'success': True, 'msg': 'Today is weekend, skip absent check.'})
+            
+        gc = get_gspread_client()
+        if not gc:
+            return jsonify({'success': False, 'error': 'No gspread client'})
+            
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        # 取得所有學員
+        sheet_students = doc.worksheet('學員名單')
+        students_records = sheet_students.get_all_records()
+        all_students = [str(rec.get('姓名', '')).strip() for rec in students_records if str(rec.get('姓名', '')).strip()]
+        if not all_students:
+            return jsonify({'success': True, 'msg': 'No students in roster'})
+        
+        # 取得今日打卡
+        today_str = now_dt.strftime("%Y-%m-%d")
+        sheet_records = doc.worksheet('上下班打卡記錄')
+        all_vals = sheet_records.get_all_values()
+        
+        checked_in_students = set()
+        for r in all_vals[1:]: # skip header
+            # 簽到時間在 index 4 (0-indexed -> r[4])
+            if len(r) > 4:
+                checkin_time = str(r[4]).strip()
+                if checkin_time.startswith(today_str):
+                    student = str(r[0]).strip()
+                    checked_in_students.add(student)
+                    
+        absent_students = [s for s in all_students if s not in checked_in_students]
+        
+        if not absent_students:
+            return jsonify({'success': True, 'msg': 'All students have checked in today.'})
+            
+        # Send Email
+        sender_email = os.getenv("SENDER_EMAIL")
+        sender_password = os.getenv("SENDER_PASSWORD")
+        notify_emails = os.getenv("NOTIFY_EMAILS")
+        
+        if sender_email and sender_password and notify_emails:
+            import smtplib
+            from email.message import EmailMessage
+            msg = EmailMessage()
+            subject = f"⚠️ [遲到警報] {today_str} 未簽到學員名單統整"
+            
+            absent_str = "\n".join([f"- {s}" for s in absent_students])
+            body = f"系統偵測到以下學員今日 ({today_str}) 尚未完成簽到：\n\n{absent_str}\n\n※ 此為系統定時自動發送之信件，請勿回覆。"
+            
+            msg.set_content(body)
+            msg['Subject'] = subject
+            msg['From'] = sender_email
+            msg['To'] = ", ".join([e.strip() for e in notify_emails.split(',')])
+            with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+                smtp.login(sender_email, sender_password)
+                smtp.send_message(msg)
+                
+        return jsonify({'success': True, 'absent_count': len(absent_students), 'absent_students': absent_students})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
