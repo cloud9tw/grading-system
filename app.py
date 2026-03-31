@@ -62,6 +62,11 @@ def get_gspread_client():
 @app.route('/')
 def index():
     user = session.get('user')
+    student_id = request.args.get('student_id')
+    
+    if student_id and not user:
+        session['next_url'] = f"/?student_id={student_id}"
+        
     if user:
         return render_template('dashboard.html', user=user)
     return render_template('login.html')
@@ -114,7 +119,8 @@ def authorize():
     if not user_info:
         user_info = google.userinfo()
     session['user'] = user_info
-    return redirect('/')
+    next_url = session.pop('next_url', '/')
+    return redirect(next_url)
 
 @app.route('/logout')
 def logout():
@@ -127,6 +133,34 @@ def attendance():
     if not user:
         return redirect('/login')
     return render_template('attendance.html', user=user)
+
+@app.route('/qrcodes')
+def qrcodes():
+    user = session.get('user')
+    if not user:
+        session['next_url'] = '/qrcodes'
+        return redirect('/login')
+        
+    try:
+        gc = get_gspread_client()
+        if not gc:
+            return "Google Sheets backend not configured.", 500
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet_students = doc.worksheet('學員名單')
+        students_records = sheet_students.get_all_records()
+        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
+        
+        # request.url_root returns something like 'https://example.com/'
+        import urllib.parse
+        root_url = request.url_root
+        for s in students:
+            target_url = f"{root_url}?student_id={s['id']}"
+            s['qr_img_url'] = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(target_url)}"
+            
+        return render_template('qrcodes.html', user=user, students=students)
+    except Exception as e:
+        return f"Error loading student roster: {str(e)}", 500
 
 @app.route('/api/attendance_config', methods=['GET'])
 def get_attendance_config():

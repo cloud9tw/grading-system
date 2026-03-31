@@ -251,6 +251,25 @@
             });
 
             studentSelect.addEventListener('change', updateStatsDisplay);
+            
+            // 解析連帶掃描 QR 碼帶過來的目標學員
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetStudentId = urlParams.get('student_id');
+            if (targetStudentId) {
+                for (let i = 0; i < studentSelect.options.length; i++) {
+                    try {
+                        const optVal = JSON.parse(studentSelect.options[i].value);
+                        if (optVal.id === targetStudentId) {
+                            studentSelect.selectedIndex = i;
+                            studentSelect.dispatchEvent(new Event('change'));
+                            
+                            // 掃碼後提示
+                            showAutoSelectMessage(optVal.name);
+                            break;
+                        }
+                    } catch(e) {}
+                }
+            }
 
             // 站別按鍵式
             const stationContainer = document.getElementById('stationContainer');
@@ -608,6 +627,18 @@
             btn.innerHTML = text;
             btn.disabled = false;
             btn.classList.remove('opacity-75');
+        }
+
+        function showAutoSelectMessage(name) {
+            const msgBox = document.getElementById('messageBox');
+            const msgIcon = document.getElementById('messageIcon');
+            const msgText = document.getElementById('messageText');
+            msgBox.classList.remove('hidden', 'bg-red-50', 'bg-green-50');
+            msgBox.classList.add('bg-blue-50');
+            msgText.classList.remove('text-red-800', 'text-green-800');
+            msgText.classList.add('text-blue-800');
+            msgIcon.innerHTML = `<svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>`;
+            msgText.textContent = `已透過掃碼自動帶入學員：${name}！請繼續選擇評分站別。`;
         }
     </script>
 </body>
