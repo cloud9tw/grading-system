@@ -49,31 +49,35 @@ def safe_get_all_records(worksheet):
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
-    # 嘗試多個可能存放憑證的路徑：1. 環境變數 2. Render 預設機密路徑 3. 本機根目錄
+    # 1. 直接讀取環境變數中的 JSON 字串 (推薦在 GCP Cloud Run 等無伺服器環境使用)
+    json_str = os.getenv("GOOGLE_CREDENTIALS_JSON") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    if json_str and json_str.strip().startswith('{'):
+        try:
+            creds_dict = json.loads(json_str)
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+            return gspread.authorize(creds)
+        except Exception as e:
+            print(f"Error loading credentials from JSON string: {e}")
+            raise Exception(f"GCP JSON credentials parse error: {str(e)}")
+            
+    # 2. 如果沒有環境變數 JSON，則嘗試讀取實體金鑰檔案
     possible_paths = [
         os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-        os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON"),
         "/etc/secrets/credentials.json",   # Render default secret file path
         "credentials.json"
     ]
     
-    creds_file = None
+    errors = []
     for path in possible_paths:
         if path and os.path.exists(path):
-            creds_file = path
-            break
-
-    if creds_file:
-        try:
-            creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, scope)
-            client = gspread.authorize(creds)
-            return client
-        except Exception as e:
-            print(f"Error loading credentials from {creds_file}: {e}")
-            return None
-    else:
-        print(f"Credentials file not found in any of the configured paths.")
-    return None
+            try:
+                creds = ServiceAccountCredentials.from_json_keyfile_name(path, scope)
+                return gspread.authorize(creds)
+            except Exception as e:
+                print(f"Error loading credentials from {path}: {e}")
+                errors.append(f"[{path}] {str(e)}")
+                
+    raise Exception("Google Sheets credentials not found. Tried paths: " + " | ".join(errors) if errors else "No valid credential file paths found.")
 
 @app.route('/')
 def index():
