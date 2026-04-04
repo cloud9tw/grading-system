@@ -91,7 +91,7 @@ def index():
             student_info = session.get('student_info', {})
             s_id = student_info.get('id', '')
             root_url = request.url_root
-            target_url = f"{root_url}?student_id={s_id}"
+            target_url = f"{root_url}attendance?student_id={s_id}"
             qr_img_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(target_url)}"
             return render_template('student_dashboard.html', user=user, student_info=student_info, qr_img_url=qr_img_url, roles=roles)
         else:
@@ -245,7 +245,7 @@ def qrcodes():
         import urllib.parse
         root_url = request.url_root
         for s in students:
-            target_url = f"{root_url}?student_id={s['id']}"
+            target_url = f"{root_url}attendance?student_id={s['id']}"
             s['qr_img_url'] = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(target_url)}"
             
         return render_template('qrcodes.html', user=user, students=students)
@@ -496,7 +496,7 @@ def get_config():
         sheet_students = doc.worksheet('學員名單')
         # [學生ID, 姓名, email]
         students_records = safe_get_all_records(sheet_students)
-        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', ''))} for rec in students_records if rec.get('姓名')]
+        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', '')), 'email': str(rec.get('Email', '')).strip().lower()} for rec in students_records if rec.get('姓名')]
         
         # 取得站別OPA細項
         sheet_stations = doc.worksheet('站別OPA細項')
@@ -728,6 +728,44 @@ def get_student_stats():
             records_by_station[st].sort(key=lambda x: x['time'])
             
         return jsonify({'success': True, 'data': records_by_station})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/student_attendance', methods=['GET'])
+def get_student_attendance():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+    student_info = session.get('student_info')
+    if not student_info:
+        return jsonify({'success': False, 'error': 'No student info found.'}), 400
+        
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet = doc.worksheet('上下班打卡記錄')
+        all_vals = sheet.get_all_values()
+        
+        target_name = student_info['name']
+        history = []
+        
+        for r in all_vals[1:]:
+            # Header: ['學生', '教師', '共同教師', '檢查室', '簽到時間', '簽退時間']
+            if len(r) >= 5 and str(r[0]).strip() == target_name:
+                history.append({
+                    'teacher': str(r[1]).strip(),
+                    'co_teacher': str(r[2]).strip() if len(r) > 2 else '',
+                    'room': str(r[3]).strip() if len(r) > 3 else '',
+                    'check_in': str(r[4]).strip() if len(r) > 4 else '',
+                    'check_out': str(r[5]).strip() if len(r) > 5 else ''
+                })
+        
+        # Sort by check_in time descending (newest first)
+        history.sort(key=lambda x: x['check_in'], reverse=True)
+                
+        return jsonify({'success': True, 'data': history})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

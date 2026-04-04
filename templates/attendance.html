@@ -173,6 +173,18 @@
                 });
             }
 
+            // [新增] 解析 QR Code 帶過來的 student_id
+            const urlParams = new URLSearchParams(window.location.search);
+            const targetStudentId = urlParams.get('student_id');
+            if (targetStudentId) {
+                const matchedStudent = configData.students.find(s => String(s.id) === String(targetStudentId));
+                if (matchedStudent) {
+                    studentSelect.value = matchedStudent.name;
+                    // 提示文字
+                    showMessage('success', '掃碼成功', `已自動帶入学員：${matchedStudent.name}`);
+                }
+            }
+
             // 2. 載入大科
             const deptContainer = document.getElementById('departmentContainer');
             configData.departments.forEach((dept, index) => {

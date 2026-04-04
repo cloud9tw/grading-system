@@ -235,6 +235,7 @@
     </main>
 
     <script>
+        const CURRENT_USER_EMAIL = "{{ user.email|lower }}";
         let configData = null;
 
         document.addEventListener('DOMContentLoaded', async () => {
@@ -263,6 +264,9 @@
 
             const studentSelect = document.getElementById('studentSelect');
             configData.students.forEach(student => {
+                if (student.email && student.email === CURRENT_USER_EMAIL) {
+                    return; // Skip adding the logged-in user to the dropdown
+                }
                 const opt = document.createElement('option');
                 opt.value = JSON.stringify({ id: student.id, name: student.name });
                 opt.textContent = `${student.name} (${student.id})`;
@@ -540,6 +544,14 @@
             const ticked = document.querySelectorAll('input[name="aspect_cb"]:checked');
             if (ticked.length !== 2) {
                 alert('【此次觀察面向選擇】請務必剛好勾選 2 項喔！\n(目前勾選了 ' + ticked.length + ' 項)');
+                return;
+            }
+
+            // 15字回饋檢查
+            const commentStr = document.getElementById('comment').value.trim();
+            if (commentStr.length < 15) {
+                alert('⚠️ 系統提醒：\n「質性回饋」請簡單輸入針對學員此次表現評語，內容不得少於 15 個字！\n（目前字數：' + commentStr.length + ' 字）');
+                document.getElementById('comment').focus();
                 return;
             }
 
