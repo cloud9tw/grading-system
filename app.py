@@ -244,7 +244,6 @@ def feedback_page():
         teachers_records = safe_get_all_records(doc.worksheet('教師名單'))
         teachers = [str(r.get('教師姓名', '')).strip() for r in teachers_records if str(r.get('教師姓名', '')).strip()]
         # 取得檢查室清單（與簽到退相同資料源）
-        # 格式：第一欄=部門名稱，其餘欄=檢查室名稱
         room_sheet = doc.worksheet('檢查室清單')
         all_rows = room_sheet.get_all_values()
         departments = []
@@ -254,11 +253,24 @@ def feedback_page():
                 continue
             rooms = [str(c).strip() for c in row[1:] if str(c).strip()]
             departments.append({'dept': dept, 'rooms': rooms})
+        # 從學員名單中，依 Email 比對取得學生姓名
+        user_email = user.get('email', '').strip().lower()
+        students_records = safe_get_all_records(doc.worksheet('學員名單'))
+        student_name = user.get('name', '')  # 預設為 Google 帳號姓名
+        for rec in students_records:
+            rec_email = str(rec.get('Email', '')).strip().lower()
+            if rec_email and rec_email == user_email:
+                matched = str(rec.get('姓名', '')).strip()
+                if matched:
+                    student_name = matched
+                break
     except Exception as e:
         teachers = []
         departments = []
+        student_name = user.get('name', '')
     import json
     return render_template('feedback.html', user=user, roles=session.get('roles', []),
+                           student_name=student_name,
                            teachers=teachers, departments_json=json.dumps(departments, ensure_ascii=False))
 
 @app.route('/api/submit_feedback', methods=['POST'])
