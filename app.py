@@ -228,6 +228,83 @@ def attendance():
         return redirect('/login')
     return render_template('attendance.html', user=user, roles=session.get('roles', []))
 
+@app.route('/feedback')
+def feedback_page():
+    user = session.get('user')
+    if not user:
+        session['next_url'] = '/feedback'
+        return redirect('/login')
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        # 取得教師名單 - 使用正確的「教師姓名」欄位
+        teachers_records = safe_get_all_records(doc.worksheet('教師名單'))
+        teachers = [str(r.get('教師姓名', '')).strip() for r in teachers_records if str(r.get('教師姓名', '')).strip()]
+        # 取得站別名稱 - 與EPA評核相同資料源
+        stations_records = safe_get_all_records(doc.worksheet('站別OPA細項'))
+        stations = [str(r.get('站別', '')).strip() for r in stations_records if str(r.get('站別', '')).strip()]
+    except Exception as e:
+        teachers = []
+        stations = []
+    return render_template('feedback.html', user=user, roles=session.get('roles', []), teachers=teachers, stations=stations)
+
+@app.route('/api/submit_feedback', methods=['POST'])
+def submit_feedback():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    try:
+        data = request.json
+        gc = get_gspread_client()
+        FEEDBACK_SHEET_ID = '112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w'
+        doc = gc.open_by_key(FEEDBACK_SHEET_ID)
+        sheet = doc.worksheet('表單回應')
+        
+        now_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+        timestamp = now_dt.strftime('%Y/%m/%d %p %I:%M:%S')
+        
+        # 評分項目順序 (B起)：
+        # B:時間 C:學生姓名 D:email E:教師名 F:未登錄教員 G:站別
+        # H-K:核心價值1-4 L:整體 M-N:病人照譲61-2 O:整體
+        # P-R:知譜1-3 S:整體 T-V:溝通1-3 W:整體 X:全體平均
+        # Y-AB:教師教学1-4 AC:平均 AD:意見
+        def to_int(v):
+            try: return int(v)
+            except: return ''
+
+        core = data.get('core', {})
+        care = data.get('care', {})
+        know = data.get('know', {})
+        comm = data.get('comm', {})
+        teach = data.get('teach', {})
+
+        row = [
+            '',  # A (斷行編號，畠空)
+            timestamp,  # B
+            data.get('student_name', user.get('name', '')),  # C
+            user.get('email', ''),  # D
+            data.get('teacher', ''),  # E
+            data.get('other_teacher', ''),  # F
+            data.get('station', ''),  # G
+            to_int(core.get('q1')), to_int(core.get('q2')), to_int(core.get('q3')), to_int(core.get('q4')),  # H-K
+            to_int(core.get('overall')),  # L
+            to_int(care.get('q1')), to_int(care.get('q2')),  # M-N
+            to_int(care.get('overall')),  # O
+            to_int(know.get('q1')), to_int(know.get('q2')), to_int(know.get('q3')),  # P-R
+            to_int(know.get('overall')),  # S
+            to_int(comm.get('q1')), to_int(comm.get('q2')), to_int(comm.get('q3')),  # T-V
+            to_int(comm.get('overall')),  # W
+            '',  # X 整體能力平均 (公式自動計算，畠空)
+            to_int(teach.get('q1')), to_int(teach.get('q2')), to_int(teach.get('q3')), to_int(teach.get('q4')),  # Y-AB
+            '',  # AC 平均
+            data.get('suggestion', '')  # AD
+        ]
+        sheet.append_row(row, table_range='A1')
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/qrcodes')
 def qrcodes():
     user = session.get('user')

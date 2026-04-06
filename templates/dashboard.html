@@ -61,6 +61,9 @@
             <a href="/attendance"
                 class="flex-1 text-center py-3 bg-white text-gray-700 font-semibold border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition">⏱️
                 學員簽到退</a>
+            <a href="/feedback"
+                class="flex-1 text-center py-3 bg-white text-gray-700 font-semibold border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition">📝
+                教學回饋表</a>
         </div>
 
         <div class="bg-white px-8 py-8 shadow-sm rounded-xl border border-gray-200">
@@ -422,29 +425,44 @@
             return checked ? checked.value : null;
         }
 
-        // 建立 8 個信賴等級按鈕群組
+        // 建立 8 個信賴等級按鈕群組 - 整個按鈕變色版
         function createTrustButtons(groupName, required = true) {
-            let html = `<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 trust-btn-group" id="group_${groupName}">`;
+            let html = `<div class="flex flex-wrap gap-2 trust-btn-group" id="group_${groupName}">`;
             configData.trust_levels.forEach((lvl, idx) => {
-                const uid = `btn_${groupName}_${idx}`;
                 html += `
-                    <label class="trust-level-btn relative flex items-center justify-center p-2 border rounded cursor-pointer hover:bg-gray-50 transition-all border-gray-200 text-center text-sm font-medium">
-                        <input type="radio" name="${groupName}" value="${lvl.score}" class="sr-only" ${required ? 'required' : ''} data-desc="${lvl.desc}">
-                        <div>${lvl.level}</div>
+                    <label class="trust-level-btn-wrapper">
+                        <input type="radio" name="${groupName}" value="${lvl.score}" class="sr-only trust-radio" ${required ? 'required' : ''} data-desc="${lvl.desc}" data-group="${groupName}">
+                        <span class="trust-btn inline-flex items-center justify-center px-3 py-2 border-2 border-gray-200 rounded-lg cursor-pointer text-sm font-semibold text-gray-700 bg-white hover:border-blue-400 hover:bg-blue-50 transition-all select-none" style="min-width:2.8rem;">${lvl.level}</span>
                     </label>
                 `;
             });
             html += `</div>
-            <p class="mt-2 text-sm text-gray-500 italic h-5 trust-desc" id="desc_${groupName}"></p>`;
+            <p class="mt-2 text-sm text-blue-600 italic h-5 trust-desc" id="desc_${groupName}"></p>`;
             return html;
         }
 
         function setupTrustButtonListeners(container) {
-            const radios = container.querySelectorAll('input[type="radio"]');
+            const radios = container.querySelectorAll('input.trust-radio');
             radios.forEach(r => {
                 r.addEventListener('change', (e) => {
+                    const groupName = e.target.getAttribute('data-group');
+                    // Reset all buttons in the same group
+                    document.querySelectorAll(`input[name="${groupName}"]`).forEach(sibling => {
+                        const span = sibling.nextElementSibling;
+                        if (span) {
+                            span.classList.remove('bg-blue-600', 'border-blue-600', 'text-white', 'shadow-md');
+                            span.classList.add('bg-white', 'border-gray-200', 'text-gray-700');
+                        }
+                    });
+                    // Highlight selected
+                    const selectedSpan = e.target.nextElementSibling;
+                    if (selectedSpan) {
+                        selectedSpan.classList.add('bg-blue-600', 'border-blue-600', 'text-white', 'shadow-md');
+                        selectedSpan.classList.remove('bg-white', 'border-gray-200', 'text-gray-700');
+                    }
+                    // Update description
                     const descText = e.target.getAttribute('data-desc');
-                    const descEl = document.getElementById('desc_' + e.target.name);
+                    const descEl = document.getElementById('desc_' + groupName);
                     if (descEl) descEl.textContent = descText;
                 });
             });
@@ -476,7 +494,7 @@
             setupTrustButtonListeners(container);
         }
 
-        // 預先繪製所有階段的 8 題細項到各自隱藏的容器中，避免切換時 DOM 重建導致作答紀錄消失
+        // 預先繪製所有階段的 8 題細項到各自隱藏的容器中 - 改為 accordion 可摺疊
         function renderAllStageItems() {
             const station = getSelectedStation();
             const container = document.getElementById('dynamicGradingItems');
@@ -488,35 +506,49 @@
             stages.forEach(stage => {
                 const stageDiv = document.createElement('div');
                 stageDiv.id = `items_${stage}`;
-                stageDiv.className = 'hidden space-y-6';
+                stageDiv.className = 'hidden';
 
                 let items = [];
                 if (stage === 'OPA1') items = station.opa1_items;
                 else if (stage === 'OPA2') items = station.opa2_items;
                 else if (stage === 'OPA3') items = station.opa3_items;
 
+                // 包在一個可折疊的 <details> 中
+                const details = document.createElement('details');
+                details.className = 'border border-gray-200 rounded-xl overflow-hidden shadow-sm';
+                // 預設閉合 (不加 open 屬性)
+
+                const summary = document.createElement('summary');
+                summary.className = 'flex items-center justify-between px-5 py-3 bg-gray-50 cursor-pointer font-semibold text-gray-700 hover:bg-gray-100 transition-colors list-none select-none';
+                summary.innerHTML = `
+                    <span>📋 ${stage} 細項評分參考 <span class="text-xs font-normal text-gray-400 ml-1">(選填，點此展開)</span></span>
+                    <svg class="w-4 h-4 text-gray-400 transition-transform details-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                `;
+                details.appendChild(summary);
+
+                const innerDiv = document.createElement('div');
+                innerDiv.className = 'p-4 space-y-4 bg-white';
+
                 let hasValidItem = false;
                 items.forEach((itemText, i) => {
                     if (!itemText || itemText.trim() === '') return;
                     hasValidItem = true;
                     const fieldNameItem = `${stage.toLowerCase()}_${i + 1}`;
-
                     const itemDiv = document.createElement('div');
-                    itemDiv.className = 'bg-white p-4 border border-gray-100 rounded-lg shadow-sm';
+                    itemDiv.className = 'bg-gray-50 p-3 border border-gray-100 rounded-lg';
                     itemDiv.innerHTML = `
-                        <p class="text-sm font-medium text-gray-800 mb-3">${i + 1}. ${itemText}</p>
+                        <p class="text-sm font-medium text-gray-800 mb-2">${i + 1}. ${itemText}</p>
                         ${createTrustButtons(fieldNameItem, false)}
                     `;
-                    stageDiv.appendChild(itemDiv);
+                    innerDiv.appendChild(itemDiv);
                 });
 
                 if (!hasValidItem) {
-                    const emptyMsg = document.createElement('p');
-                    emptyMsg.className = 'text-gray-500 italic text-center p-4';
-                    emptyMsg.textContent = '這個階段沒有設定具體評分細項。';
-                    stageDiv.appendChild(emptyMsg);
+                    innerDiv.innerHTML = '<p class="text-gray-400 italic text-center py-3 text-sm">這個階段沒有設定具體評分細項。</p>';
                 }
 
+                details.appendChild(innerDiv);
+                stageDiv.appendChild(details);
                 container.appendChild(stageDiv);
             });
 

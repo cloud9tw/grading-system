@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>臨床教學回饋表</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .rating-btn { transition: all 0.15s ease; }
+        .rating-btn.selected { background: #2563EB; color: white; border-color: #2563EB; transform: scale(1.05); box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+        .section-card { background: white; border-radius: 1rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 4px rgba(0,0,0,0.05); padding: 1.5rem; margin-bottom: 1.5rem; }
+        .section-title { font-size: 1rem; font-weight: 700; color: #1e40af; border-left: 4px solid #2563EB; padding-left: 0.75rem; margin-bottom: 1.25rem; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 via-white to-indigo-50 min-h-screen">
+
+<!-- 導覽列 -->
+<nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+    <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+            <span class="font-bold text-lg text-gray-900">臨床教學評值回饋表</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/" class="text-sm text-gray-500 hover:text-gray-700">← 返回主頁</a>
+            <img class="h-8 w-8 rounded-full" src="{{ user.picture }}" onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}'">
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-3xl mx-auto py-8 px-4">
+    <!-- 頂部說明 -->
+    <div class="bg-blue-600 text-white rounded-2xl p-6 mb-8 shadow-lg">
+        <h1 class="text-xl font-bold mb-2">臨床實習教師教學品質回饋</h1>
+        <p class="text-blue-100 text-sm">本表單旨在改善臨床教學品質，您的回饋將有助於教師的持續成長。請依實際觀察誠實填寫，評分為 1 到 5 分。</p>
+    </div>
+
+    <form id="feedbackForm" class="space-y-0">
+        <!-- 基本資料 -->
+        <div class="section-card">
+            <p class="section-title">📋 基本資料</p>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">您的姓名（學生）</label>
+                    <input type="text" id="student_name" value="{{ user.name }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none" placeholder="請填入您的姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">評核教師 <span class="text-red-500">*</span></label>
+                    <select id="teacher" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" required>
+                        <option value="" disabled selected>請選擇教師</option>
+                        {% for t in teachers %}
+                        <option value="{{ t }}">{{ t }}</option>
+                        {% endfor %}
+                        <option value="__other__">其他（請手動輸入）</option>
+                    </select>
+                    <input type="text" id="other_teacher" class="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm hidden" placeholder="請輸入教師姓名">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">臨床實習站別 <span class="text-red-500">*</span></label>
+                    <select id="station" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" required>
+                        <option value="" disabled selected>請選擇站別</option>
+                        {% for s in stations %}
+                        <option value="{{ s }}">{{ s }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- 評分量表說明 -->
+        <div class="flex gap-1 flex-wrap mb-4 px-1 text-xs text-gray-500">
+            <span class="bg-gray-100 rounded px-2 py-1">1=非常不符合</span>
+            <span class="bg-gray-100 rounded px-2 py-1">2=不符合</span>
+            <span class="bg-gray-100 rounded px-2 py-1">3=尚可</span>
+            <span class="bg-gray-100 rounded px-2 py-1">4=符合</span>
+            <span class="bg-gray-100 rounded px-2 py-1">5=非常符合</span>
+        </div>
+
+        <!-- 核心價值與專業責任 -->
+        <div class="section-card">
+            <p class="section-title">🌟 一、核心價值與專業責任</p>
+            <div class="space-y-5" id="core-section">
+                {% set core_items = [
+                    ('core_q1', '1. 準時出席'),
+                    ('core_q2', '2. 對病人及其隱私表現尊重'),
+                    ('core_q3', '3. 在督導下能在限時內完成醫療紀錄（或指定的學習單）'),
+                    ('core_q4', '4. 展現主動學習的態度'),
+                ] %}
+                {% for field, label in core_items %}
+                <div>
+                    <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
+                    <div class="flex gap-2" data-group="{{ field }}">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="border-t pt-4">
+                    <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 核心價值與專業責任</p>
+                    <div class="flex gap-2" data-group="core_overall">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'core_overall')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 病人照護與醫療能力 -->
+        <div class="section-card">
+            <p class="section-title">🏥 二、病人照護與醫療能力</p>
+            <div class="space-y-5">
+                {% set care_items = [
+                    ('care_q1', '1. 具有邏輯性與批判性的思考'),
+                    ('care_q2', '2. 正確執行核心技術（如擺位、正確操作儀器等）'),
+                ] %}
+                {% for field, label in care_items %}
+                <div>
+                    <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
+                    <div class="flex gap-2" data-group="{{ field }}">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="border-t pt-4">
+                    <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 病人照護與醫療能力</p>
+                    <div class="flex gap-2" data-group="care_overall">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'care_overall')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 一般及專業知識 -->
+        <div class="section-card">
+            <p class="section-title">📚 三、一般及專業知識</p>
+            <div class="space-y-5">
+                {% set know_items = [
+                    ('know_q1', '1. 能瞭解教學內容與目標'),
+                    ('know_q2', '2. 具備分析影像（或檢查結果）能力'),
+                    ('know_q3', '3. 能將學理應用於臨床實務'),
+                ] %}
+                {% for field, label in know_items %}
+                <div>
+                    <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
+                    <div class="flex gap-2" data-group="{{ field }}">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="border-t pt-4">
+                    <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 一般及專業知識</p>
+                    <div class="flex gap-2" data-group="know_overall">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'know_overall')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 溝通與合作 -->
+        <div class="section-card">
+            <p class="section-title">🤝 四、溝通與合作</p>
+            <div class="space-y-5">
+                {% set comm_items = [
+                    ('comm_q1', '1. 具備良好同儕互動及溝通能力'),
+                    ('comm_q2', '2. 具備與病人或家屬良好溝通能力'),
+                    ('comm_q3', '3. 能融入並參與團隊運作'),
+                ] %}
+                {% for field, label in comm_items %}
+                <div>
+                    <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
+                    <div class="flex gap-2" data-group="{{ field }}">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="border-t pt-4">
+                    <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 溝通與合作</p>
+                    <div class="flex gap-2" data-group="comm_overall">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'comm_overall')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 教師教學評估 -->
+        <div class="section-card">
+            <p class="section-title">👨‍🏫 五、教師教學評估</p>
+            <div class="space-y-5">
+                {% set teach_items = [
+                    ('teach_q1', '1. 教學活動安排與連貫性'),
+                    ('teach_q2', '2. 全人醫療照護示範與引導'),
+                    ('teach_q3', '3. 醫學知識與臨床決策導引'),
+                    ('teach_q4', '4. 教學技巧與回饋能力'),
+                ] %}
+                {% for field, label in teach_items %}
+                <div>
+                    <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
+                    <div class="flex gap-2" data-group="{{ field }}">
+                        {% for i in range(1,6) %}
+                        <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- 整體建議 -->
+        <div class="section-card">
+            <p class="section-title">💬 對教師的整體建議</p>
+            <textarea id="suggestion" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none resize-none" placeholder="※ 請務必填寫，包含您對教師的正面回饋或建議改善之處..."></textarea>
+        </div>
+
+        <!-- 結果訊息 -->
+        <div id="resultMsg" class="hidden rounded-xl p-4 mb-4 text-sm font-medium"></div>
+
+        <!-- 提交按鈕 -->
+        <button type="submit" id="submitBtn" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all text-base">
+            ✅ 送出回饋表單
+        </button>
+    </form>
+</main>
+
+<script>
+    const ratings = {};  // stores all selected values
+
+    function selectRating(btn, group) {
+        // Reset siblings
+        const siblings = btn.parentElement.querySelectorAll('.rating-btn');
+        siblings.forEach(b => b.classList.remove('selected'));
+        // Mark selected
+        btn.classList.add('selected');
+        ratings[group] = btn.getAttribute('data-value');
+    }
+
+    document.getElementById('teacher').addEventListener('change', function() {
+        const other = document.getElementById('other_teacher');
+        if (this.value === '__other__') {
+            other.classList.remove('hidden');
+        } else {
+            other.classList.add('hidden');
+        }
+    });
+
+    document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const teacher = document.getElementById('teacher').value;
+        const station = document.getElementById('station').value;
+        const suggestion = document.getElementById('suggestion').value.trim();
+
+        if (!teacher || !station) {
+            alert('請選擇教師和站別！');
+            return;
+        }
+        if (!suggestion) {
+            alert('請填寫「對教師的整體建議」（必填）！');
+            document.getElementById('suggestion').focus();
+            return;
+        }
+
+        const otherTeacher = document.getElementById('other_teacher').value.trim();
+
+        const payload = {
+            student_name: document.getElementById('student_name').value.trim(),
+            teacher: teacher === '__other__' ? otherTeacher : teacher,
+            other_teacher: teacher === '__other__' ? otherTeacher : '',
+            station: station,
+            suggestion: suggestion,
+            core: {
+                q1: ratings['core_q1'] || '',
+                q2: ratings['core_q2'] || '',
+                q3: ratings['core_q3'] || '',
+                q4: ratings['core_q4'] || '',
+                overall: ratings['core_overall'] || ''
+            },
+            care: {
+                q1: ratings['care_q1'] || '',
+                q2: ratings['care_q2'] || '',
+                overall: ratings['care_overall'] || ''
+            },
+            know: {
+                q1: ratings['know_q1'] || '',
+                q2: ratings['know_q2'] || '',
+                q3: ratings['know_q3'] || '',
+                overall: ratings['know_overall'] || ''
+            },
+            comm: {
+                q1: ratings['comm_q1'] || '',
+                q2: ratings['comm_q2'] || '',
+                q3: ratings['comm_q3'] || '',
+                overall: ratings['comm_overall'] || ''
+            },
+            teach: {
+                q1: ratings['teach_q1'] || '',
+                q2: ratings['teach_q2'] || '',
+                q3: ratings['teach_q3'] || '',
+                q4: ratings['teach_q4'] || ''
+            }
+        };
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.textContent = '送出中...';
+
+        try {
+            const res = await fetch('/api/submit_feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            const msgEl = document.getElementById('resultMsg');
+            msgEl.classList.remove('hidden');
+            if (result.success) {
+                msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-green-100 text-green-800 border border-green-300';
+                msgEl.textContent = '✅ 回饋已成功送出！感謝您的寶貴意見，這將有助於提升教學品質。';
+                document.getElementById('feedbackForm').reset();
+                document.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'));
+                for (const k in ratings) delete ratings[k];
+                btn.textContent = '✅ 已送出';
+            } else {
+                msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
+                msgEl.textContent = '❌ 送出失敗：' + result.error;
+                btn.disabled = false;
+                btn.textContent = '✅ 送出回饋表單';
+            }
+        } catch (err) {
+            document.getElementById('resultMsg').className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
+            document.getElementById('resultMsg').textContent = '❌ 網路錯誤，請稍後再試。';
+            document.getElementById('resultMsg').classList.remove('hidden');
+            btn.disabled = false;
+            btn.textContent = '✅ 送出回饋表單';
+        }
+    });
+</script>
+</body>
+</html>
