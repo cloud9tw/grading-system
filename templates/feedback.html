@@ -10,8 +10,14 @@
         body { font-family: 'Inter', sans-serif; }
         .rating-btn { transition: all 0.15s ease; }
         .rating-btn.selected { background: #2563EB; color: white; border-color: #2563EB; transform: scale(1.05); box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
+        .station-btn { transition: all 0.15s ease; }
+        .station-btn.active { background: #2563EB; color: white; border-color: #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.25); }
+        .part-btn { transition: all 0.15s ease; }
+        .part-btn.active { background: #059669; color: white; border-color: #059669; }
         .section-card { background: white; border-radius: 1rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 4px rgba(0,0,0,0.05); padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1rem; font-weight: 700; color: #1e40af; border-left: 4px solid #2563EB; padding-left: 0.75rem; margin-bottom: 1.25rem; }
+        .rating-section { opacity: 0; pointer-events: none; max-height: 0; overflow: hidden; transition: opacity 0.3s, max-height 0.4s; }
+        .rating-section.visible { opacity: 1; pointer-events: auto; max-height: 9999px; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 via-white to-indigo-50 min-h-screen">
@@ -57,14 +63,21 @@
                     </select>
                     <input type="text" id="other_teacher" class="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm hidden" placeholder="請輸入教師姓名">
                 </div>
+
+                <!-- === 站別按鈕選擇 === -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">臨床實習站別 <span class="text-red-500">*</span></label>
-                    <select id="station" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" required>
-                        <option value="" disabled selected>請選擇站別</option>
-                        {% for s in stations %}
-                        <option value="{{ s }}">{{ s }}</option>
-                        {% endfor %}
-                    </select>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">臨床實習站別 <span class="text-red-500">*</span></label>
+                    <div id="stationBtns" class="flex flex-wrap gap-2">
+                        <!-- 動態生成 -->
+                    </div>
+                    <input type="hidden" id="station" required>
+
+                    <!-- 檢查部位二階段 -->
+                    <div id="bodyPartSection" class="hidden mt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">檢查部位 <span class="text-red-500">*</span></label>
+                        <div id="bodyPartBtns" class="flex flex-wrap gap-2"></div>
+                        <input type="hidden" id="body_part">
+                    </div>
                 </div>
             </div>
         </div>
@@ -78,10 +91,13 @@
             <span class="bg-gray-100 rounded px-2 py-1">5=非常符合</span>
         </div>
 
+        <!-- 評分各區塊（在站別確認前隱藏動畫過渡） -->
+        <div id="ratingSections" class="rating-section">
+
         <!-- 核心價值與專業責任 -->
         <div class="section-card">
             <p class="section-title">🌟 一、核心價值與專業責任</p>
-            <div class="space-y-5" id="core-section">
+            <div class="space-y-5">
                 {% set core_items = [
                     ('core_q1', '1. 準時出席'),
                     ('core_q2', '2. 對病人及其隱私表現尊重'),
@@ -91,7 +107,7 @@
                 {% for field, label in core_items %}
                 <div>
                     <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
-                    <div class="flex gap-2" data-group="{{ field }}">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
                         {% endfor %}
@@ -100,7 +116,7 @@
                 {% endfor %}
                 <div class="border-t pt-4">
                     <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 核心價值與專業責任</p>
-                    <div class="flex gap-2" data-group="core_overall">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'core_overall')">{{ i }}</button>
                         {% endfor %}
@@ -120,7 +136,7 @@
                 {% for field, label in care_items %}
                 <div>
                     <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
-                    <div class="flex gap-2" data-group="{{ field }}">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
                         {% endfor %}
@@ -129,7 +145,7 @@
                 {% endfor %}
                 <div class="border-t pt-4">
                     <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 病人照護與醫療能力</p>
-                    <div class="flex gap-2" data-group="care_overall">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'care_overall')">{{ i }}</button>
                         {% endfor %}
@@ -150,7 +166,7 @@
                 {% for field, label in know_items %}
                 <div>
                     <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
-                    <div class="flex gap-2" data-group="{{ field }}">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
                         {% endfor %}
@@ -159,7 +175,7 @@
                 {% endfor %}
                 <div class="border-t pt-4">
                     <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 一般及專業知識</p>
-                    <div class="flex gap-2" data-group="know_overall">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'know_overall')">{{ i }}</button>
                         {% endfor %}
@@ -180,7 +196,7 @@
                 {% for field, label in comm_items %}
                 <div>
                     <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
-                    <div class="flex gap-2" data-group="{{ field }}">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
                         {% endfor %}
@@ -189,7 +205,7 @@
                 {% endfor %}
                 <div class="border-t pt-4">
                     <p class="text-sm font-semibold text-blue-700 mb-2">整體評分 — 溝通與合作</p>
-                    <div class="flex gap-2" data-group="comm_overall">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-blue-200 bg-blue-50 rounded-lg font-bold text-blue-700 text-sm" data-value="{{ i }}" onclick="selectRating(this, 'comm_overall')">{{ i }}</button>
                         {% endfor %}
@@ -211,7 +227,7 @@
                 {% for field, label in teach_items %}
                 <div>
                     <p class="text-sm font-medium text-gray-800 mb-2">{{ label }}</p>
-                    <div class="flex gap-2" data-group="{{ field }}">
+                    <div class="flex gap-2">
                         {% for i in range(1,6) %}
                         <button type="button" class="rating-btn flex-1 py-2 border-2 border-gray-200 rounded-lg font-bold text-gray-600 text-sm" data-value="{{ i }}" onclick="selectRating(this, '{{ field }}')">{{ i }}</button>
                         {% endfor %}
@@ -234,21 +250,87 @@
         <button type="submit" id="submitBtn" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all text-base">
             ✅ 送出回饋表單
         </button>
+
+        </div><!-- /ratingSections -->
     </form>
 </main>
 
 <script>
-    const ratings = {};  // stores all selected values
+    const ratings = {};
+    const stationsData = {{ stations_json | safe }};
+    let selectedStation = '';
+    let selectedBodyPart = '';
 
+    // === 初始化站別按鈕 ===
+    function initStationButtons() {
+        const container = document.getElementById('stationBtns');
+        stationsData.forEach(s => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'station-btn px-4 py-2 border-2 border-gray-200 rounded-lg font-semibold text-sm text-gray-700 bg-white hover:border-blue-400 hover:bg-blue-50';
+            btn.textContent = s.name;
+            btn.onclick = () => selectStation(btn, s);
+            container.appendChild(btn);
+        });
+    }
+
+    function selectStation(btn, stationObj) {
+        // Reset all station buttons
+        document.querySelectorAll('.station-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        selectedStation = stationObj.name;
+        selectedBodyPart = '';
+        document.getElementById('station').value = stationObj.name;
+        document.getElementById('body_part').value = '';
+
+        // Show/hide body part section
+        const bpSection = document.getElementById('bodyPartSection');
+        const bpContainer = document.getElementById('bodyPartBtns');
+        bpContainer.innerHTML = '';
+
+        if (stationObj.body_parts && stationObj.body_parts.length > 0) {
+            bpSection.classList.remove('hidden');
+            stationObj.body_parts.forEach(part => {
+                const btn2 = document.createElement('button');
+                btn2.type = 'button';
+                btn2.className = 'part-btn px-4 py-2 border-2 border-gray-200 rounded-lg font-medium text-sm text-gray-700 bg-white hover:border-emerald-400 hover:bg-emerald-50';
+                btn2.textContent = part;
+                btn2.onclick = () => selectBodyPart(btn2, part);
+                bpContainer.appendChild(btn2);
+            });
+        } else {
+            bpSection.classList.add('hidden');
+            // No body parts required — unlock rating sections
+            showRatingSections();
+        }
+    }
+
+    function selectBodyPart(btn, part) {
+        document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedBodyPart = part;
+        document.getElementById('body_part').value = part;
+        showRatingSections();
+    }
+
+    function showRatingSections() {
+        document.getElementById('ratingSections').classList.add('visible');
+        // Smooth scroll to rating sections
+        setTimeout(() => {
+            document.getElementById('ratingSections').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+    }
+
+    // === 評分按鈕 ===
     function selectRating(btn, group) {
-        // Reset siblings
         const siblings = btn.parentElement.querySelectorAll('.rating-btn');
         siblings.forEach(b => b.classList.remove('selected'));
-        // Mark selected
         btn.classList.add('selected');
         ratings[group] = btn.getAttribute('data-value');
     }
 
+    // === 教師 "其他" 選項 ===
     document.getElementById('teacher').addEventListener('change', function() {
         const other = document.getElementById('other_teacher');
         if (this.value === '__other__') {
@@ -258,15 +340,23 @@
         }
     });
 
+    // === 送出 ===
     document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         const teacher = document.getElementById('teacher').value;
         const station = document.getElementById('station').value;
         const suggestion = document.getElementById('suggestion').value.trim();
+        const bodyPartEl = document.getElementById('body_part');
 
         if (!teacher || !station) {
             alert('請選擇教師和站別！');
+            return;
+        }
+        // If body parts exist for this station, require selection
+        const stObj = stationsData.find(s => s.name === station);
+        if (stObj && stObj.body_parts.length > 0 && !bodyPartEl.value) {
+            alert('請選擇檢查部位！');
             return;
         }
         if (!suggestion) {
@@ -281,38 +371,13 @@
             student_name: document.getElementById('student_name').value.trim(),
             teacher: teacher === '__other__' ? otherTeacher : teacher,
             other_teacher: teacher === '__other__' ? otherTeacher : '',
-            station: station,
+            station: station + (bodyPartEl.value ? ' - ' + bodyPartEl.value : ''),
             suggestion: suggestion,
-            core: {
-                q1: ratings['core_q1'] || '',
-                q2: ratings['core_q2'] || '',
-                q3: ratings['core_q3'] || '',
-                q4: ratings['core_q4'] || '',
-                overall: ratings['core_overall'] || ''
-            },
-            care: {
-                q1: ratings['care_q1'] || '',
-                q2: ratings['care_q2'] || '',
-                overall: ratings['care_overall'] || ''
-            },
-            know: {
-                q1: ratings['know_q1'] || '',
-                q2: ratings['know_q2'] || '',
-                q3: ratings['know_q3'] || '',
-                overall: ratings['know_overall'] || ''
-            },
-            comm: {
-                q1: ratings['comm_q1'] || '',
-                q2: ratings['comm_q2'] || '',
-                q3: ratings['comm_q3'] || '',
-                overall: ratings['comm_overall'] || ''
-            },
-            teach: {
-                q1: ratings['teach_q1'] || '',
-                q2: ratings['teach_q2'] || '',
-                q3: ratings['teach_q3'] || '',
-                q4: ratings['teach_q4'] || ''
-            }
+            core: { q1: ratings['core_q1']||'', q2: ratings['core_q2']||'', q3: ratings['core_q3']||'', q4: ratings['core_q4']||'', overall: ratings['core_overall']||'' },
+            care: { q1: ratings['care_q1']||'', q2: ratings['care_q2']||'', overall: ratings['care_overall']||'' },
+            know: { q1: ratings['know_q1']||'', q2: ratings['know_q2']||'', q3: ratings['know_q3']||'', overall: ratings['know_overall']||'' },
+            comm: { q1: ratings['comm_q1']||'', q2: ratings['comm_q2']||'', q3: ratings['comm_q3']||'', overall: ratings['comm_overall']||'' },
+            teach: { q1: ratings['teach_q1']||'', q2: ratings['teach_q2']||'', q3: ratings['teach_q3']||'', q4: ratings['teach_q4']||'' }
         };
 
         const btn = document.getElementById('submitBtn');
@@ -332,7 +397,12 @@
                 msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-green-100 text-green-800 border border-green-300';
                 msgEl.textContent = '✅ 回饋已成功送出！感謝您的寶貴意見，這將有助於提升教學品質。';
                 document.getElementById('feedbackForm').reset();
-                document.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'));
+                document.querySelectorAll('.rating-btn, .station-btn, .part-btn').forEach(b => b.classList.remove('selected', 'active'));
+                document.getElementById('station').value = '';
+                document.getElementById('body_part').value = '';
+                document.getElementById('bodyPartSection').classList.add('hidden');
+                document.getElementById('ratingSections').classList.remove('visible');
+                document.getElementById('stationBtns').querySelectorAll('.station-btn').forEach(b => b.classList.remove('active'));
                 for (const k in ratings) delete ratings[k];
                 btn.textContent = '✅ 已送出';
             } else {
@@ -342,13 +412,17 @@
                 btn.textContent = '✅ 送出回饋表單';
             }
         } catch (err) {
-            document.getElementById('resultMsg').className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
-            document.getElementById('resultMsg').textContent = '❌ 網路錯誤，請稍後再試。';
-            document.getElementById('resultMsg').classList.remove('hidden');
+            const msgEl = document.getElementById('resultMsg');
+            msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
+            msgEl.textContent = '❌ 網路錯誤，請稍後再試。';
+            msgEl.classList.remove('hidden');
             btn.disabled = false;
             btn.textContent = '✅ 送出回饋表單';
         }
     });
+
+    // Init
+    initStationButtons();
 </script>
 </body>
 </html>

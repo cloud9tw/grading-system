@@ -234,20 +234,32 @@ def feedback_page():
     if not user:
         session['next_url'] = '/feedback'
         return redirect('/login')
+    # 僅限學員身份使用
+    if session.get('current_role') != 'student':
+        return render_template('error.html', message='教學回饋表僅限學員身份使用。若您同時具有教師與學員身份，請先切換至「學員介面」再團入。'), 403
     try:
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
-        # 取得教師名單 - 使用正確的「教師姓名」欄位
+        # 取得教師名單 - 正確欄位「教師姓名」
         teachers_records = safe_get_all_records(doc.worksheet('教師名單'))
         teachers = [str(r.get('教師姓名', '')).strip() for r in teachers_records if str(r.get('教師姓名', '')).strip()]
-        # 取得站別名稱 - 與EPA評核相同資料源
+        # 取得站別＋檢查部位 — 與EPA評核相同資料源
         stations_records = safe_get_all_records(doc.worksheet('站別OPA細項'))
-        stations = [str(r.get('站別', '')).strip() for r in stations_records if str(r.get('站別', '')).strip()]
+        stations = []
+        for r in stations_records:
+            name = str(r.get('站別', '')).strip()
+            if not name:
+                continue
+            parts_str = str(r.get('檢查部位', '')).strip()
+            parts = [p.strip() for p in parts_str.replace('，', ',').split(',') if p.strip()] if parts_str else []
+            stations.append({'name': name, 'body_parts': parts})
     except Exception as e:
         teachers = []
         stations = []
-    return render_template('feedback.html', user=user, roles=session.get('roles', []), teachers=teachers, stations=stations)
+    import json
+    return render_template('feedback.html', user=user, roles=session.get('roles', []),
+                           teachers=teachers, stations_json=json.dumps(stations, ensure_ascii=False))
 
 @app.route('/api/submit_feedback', methods=['POST'])
 def submit_feedback():
