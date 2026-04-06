@@ -8,7 +8,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
@@ -354,36 +354,84 @@
                 alert('目前沒有資料可以匯出唷！');
                 return;
             }
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF({ orientation: 'landscape' });
 
-            // 加載中文字型（使用 Base64 dejavu）
-            doc.setFont('helvetica');
-            doc.setFontSize(16);
-            doc.text('{{ student_info.name }} - 出勤紀錄表', 14, 18);
-            doc.setFontSize(10);
-            doc.text(`產出日期: ${new Date().toLocaleDateString('zh-TW')}`, 14, 26);
+            // 建立隱藏的表格 DOM 用於擷圖轉 PDF（避免中文亂碼）
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = [
+                'position:fixed', 'top:-9999px', 'left:-9999px',
+                'width:595px',
+                'background:white', 'padding:24px', 'font-family:sans-serif',
+                'color:#111'
+            ].join(';');
 
-            const headers = [['簽到時間', '退勤時間', '檢查室', '主護教師', '共同教師']];
-            const rows = window.attendanceData.map(item => [
-                item.check_in || '-',
-                item.check_out || '-',
-                item.room || '-',
-                item.teacher || '-',
-                item.co_teacher || '-'
-            ]);
+            const studentName = '{{ student_info.name }}';
+            const today = new Date().toLocaleDateString('zh-TW');
 
-            doc.autoTable({
-                head: headers,
-                body: rows,
-                startY: 32,
-                styles: { fontSize: 10, cellPadding: 4 },
-                headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: 'bold' },
-                alternateRowStyles: { fillColor: [245, 247, 250] },
-                margin: { left: 14, right: 14 }
+            wrapper.innerHTML = `
+                <div style="font-size:18px;font-weight:bold;margin-bottom:4px;">
+                    ${studentName} - 出勤紀錄表
+                </div>
+                <div style="font-size:12px;color:#555;margin-bottom:16px;">產出日期：${today}</div>
+                <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                    <thead>
+                        <tr style="background:#4f46e5;color:white;">
+                            <th style="padding:8px 6px;text-align:left;border:1px solid #4f46e5;">簽到時間</th>
+                            <th style="padding:8px 6px;text-align:left;border:1px solid #4f46e5;">退勤時間</th>
+                            <th style="padding:8px 6px;text-align:left;border:1px solid #4f46e5;">檢查室</th>
+                            <th style="padding:8px 6px;text-align:left;border:1px solid #4f46e5;">主護教師</th>
+                            <th style="padding:8px 6px;text-align:left;border:1px solid #4f46e5;">共同教師</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${window.attendanceData.map((item, idx) => `
+                            <tr style="background:${idx % 2 === 0 ? '#f5f7fa' : '#ffffff'};">
+                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_in || '-'}</td>
+                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_out || '-'}</td>
+                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.room || '-'}</td>
+                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.teacher || '-'}</td>
+                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.co_teacher || '-'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            document.body.appendChild(wrapper);
+
+            html2canvas(wrapper, { scale: 2, useCORS: true, backgroundColor: '#ffffff' }).then(canvas => {
+                document.body.removeChild(wrapper);
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });
+
+                const pageW = doc.internal.pageSize.getWidth();
+                const pageH = doc.internal.pageSize.getHeight();
+                const margin = 24;
+                const imgW = pageW - margin * 2;
+                const imgH = (canvas.height / canvas.width) * imgW;
+
+                // 分頁處理
+                let posY = margin;
+                let remainH = imgH;
+                let srcY = 0;
+                const maxH = pageH - margin * 2;
+
+                while (remainH > 0) {
+                    const sliceH = Math.min(remainH, maxH);
+                    const sliceCanvas = document.createElement('canvas');
+                    sliceCanvas.width = canvas.width;
+                    sliceCanvas.height = (sliceH / imgW) * canvas.width;
+                    const ctx = sliceCanvas.getContext('2d');
+                    ctx.drawImage(canvas, 0, srcY, canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
+                    doc.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', margin, posY, imgW, sliceH);
+                    srcY += sliceCanvas.height;
+                    remainH -= sliceH;
+                    if (remainH > 0) { doc.addPage(); posY = margin; }
+                }
+
+                doc.save(`${studentName}_出勤紀錄.pdf`);
+            }).catch(err => {
+                document.body.removeChild(wrapper);
+                alert('轉換 PDF 失敗：' + err.message);
             });
-
-            doc.save('{{ student_info.name }}_出勤紀錄.pdf');
         }
 
         async function switchRole() {
