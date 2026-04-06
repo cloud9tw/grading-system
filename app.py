@@ -1,5 +1,6 @@
 import os
 import json
+import datetime
 from flask import Flask, redirect, url_for, session, render_template, request, jsonify
 from authlib.integrations.flask_client import OAuth
 import gspread
@@ -273,45 +274,54 @@ def submit_feedback():
         FEEDBACK_SHEET_ID = '112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w'
         doc = gc.open_by_key(FEEDBACK_SHEET_ID)
         sheet = doc.worksheet('表單回應')
-        
+
         now_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
-        timestamp = now_dt.strftime('%Y/%m/%d %p %I:%M:%S')
-        
-        # 評分項目順序 (B起)：
-        # B:時間 C:學生姓名 D:email E:教師名 F:未登錄教員 G:站別
-        # H-K:核心價值1-4 L:整體 M-N:病人照譲61-2 O:整體
-        # P-R:知譜1-3 S:整體 T-V:溝通1-3 W:整體 X:全體平均
-        # Y-AB:教師教学1-4 AC:平均 AD:意見
+        timestamp = now_dt.strftime('%Y/%m/%d 上午 %I:%M:%S')
+
         def to_int(v):
             try: return int(v)
             except: return ''
 
-        core = data.get('core', {})
-        care = data.get('care', {})
-        know = data.get('know', {})
-        comm = data.get('comm', {})
-        teach = data.get('teach', {})
+        # 前端傳來的各類分組
+        ability  = data.get('ability', {})    # 整體能力 H-K (q1–q4)
+        teaching = data.get('teaching', {})   # 教學活動 L-Q (q1–q6)
+        holistic = data.get('holistic', {})   # 全人醫療 R-U (q1–q4)
+        knowledge= data.get('knowledge', {})  # 醫學知識 V-X (q1–q3)
+        skills   = data.get('skills', {})     # 教學技巧 Y-AA (q1–q3)
 
+        # 欄次： A B C D E F G | H I J K | L M N O P Q | R S T U | V W X | Y Z AA | AB AC AD AE AF AG | AH | AI
         row = [
-            '',  # A (斷行編號，畠空)
-            timestamp,  # B
-            data.get('student_name', user.get('name', '')),  # C
-            user.get('email', ''),  # D
-            data.get('teacher', ''),  # E
-            data.get('other_teacher', ''),  # F
-            data.get('station', ''),  # G
-            to_int(core.get('q1')), to_int(core.get('q2')), to_int(core.get('q3')), to_int(core.get('q4')),  # H-K
-            to_int(core.get('overall')),  # L
-            to_int(care.get('q1')), to_int(care.get('q2')),  # M-N
-            to_int(care.get('overall')),  # O
-            to_int(know.get('q1')), to_int(know.get('q2')), to_int(know.get('q3')),  # P-R
-            to_int(know.get('overall')),  # S
-            to_int(comm.get('q1')), to_int(comm.get('q2')), to_int(comm.get('q3')),  # T-V
-            to_int(comm.get('overall')),  # W
-            '',  # X 整體能力平均 (公式自動計算，畠空)
-            to_int(teach.get('q1')), to_int(teach.get('q2')), to_int(teach.get('q3')), to_int(teach.get('q4')),  # Y-AB
-            '',  # AC 平均
-            data.get('suggestion', '')  # AD
+            '',                                                                # A (斷行編號，留空)
+            timestamp,                                                         # B 時間戳記
+            data.get('student_name', user.get('name', '')),                    # C 學生姓名
+            user.get('email', ''),                                             # D 電子郵件
+            data.get('teacher', ''),                                           # E 教師名稱
+            data.get('other_teacher', ''),                                     # F 未登錄教師
+            data.get('station', ''),                                           # G 臨床實習站別
+            # H–K: 整體能力 (老師能提升, 事先了解, 充分學習, 尊重學生)
+            to_int(ability.get('q1')), to_int(ability.get('q2')),
+            to_int(ability.get('q3')), to_int(ability.get('q4')),
+            # L–Q: 教學活動 (目標, 臨實, 示範, 問題導向, 鼓勵提問, 筆記)
+            to_int(teaching.get('q1')), to_int(teaching.get('q2')),
+            to_int(teaching.get('q3')), to_int(teaching.get('q4')),
+            to_int(teaching.get('q5')), to_int(teaching.get('q6')),
+            # R–U: 全人醫療 (照護病人, 醫療溝通, 倫理社會, 團隊)
+            to_int(holistic.get('q1')), to_int(holistic.get('q2')),
+            to_int(holistic.get('q3')), to_int(holistic.get('q4')),
+            # V–X: 醫學知識 (專業知識, 實證, 基礎+臨床)
+            to_int(knowledge.get('q1')), to_int(knowledge.get('q2')),
+            to_int(knowledge.get('q3')),
+            # Y–AA: 教學技巧 (自我學習, 回饋評核, 排定活動)
+            to_int(skills.get('q1')), to_int(skills.get('q2')),
+            to_int(skills.get('q3')),
+            # AB–AF: 各類平均 (公式自動計算，留空)
+            '', '', '', '', '',
+            # AG: 平均 (公式，留空)
+            '',
+            # AH: 對教師的整體建議
+            data.get('suggestion', ''),
+            # AI: 未登錄教師姓名 (重複 F 欄)
+            data.get('other_teacher', '')
         ]
         sheet.append_row(row, table_range='A1')
         return jsonify({'success': True})
