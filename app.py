@@ -241,25 +241,26 @@ def feedback_page():
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
-        # 取得教師名單 - 正確欄位「教師姓名」
+        # 取得教師名單
         teachers_records = safe_get_all_records(doc.worksheet('教師名單'))
         teachers = [str(r.get('教師姓名', '')).strip() for r in teachers_records if str(r.get('教師姓名', '')).strip()]
-        # 取得站別＋檢查部位 — 與EPA評核相同資料源
-        stations_records = safe_get_all_records(doc.worksheet('站別OPA細項'))
-        stations = []
-        for r in stations_records:
-            name = str(r.get('站別', '')).strip()
-            if not name:
+        # 取得檢查室清單（與簽到退相同資料源）
+        # 格式：第一欄=部門名稱，其餘欄=檢查室名稱
+        room_sheet = doc.worksheet('檢查室清單')
+        all_rows = room_sheet.get_all_values()
+        departments = []
+        for row in all_rows:
+            dept = str(row[0]).strip() if row else ''
+            if not dept:
                 continue
-            parts_str = str(r.get('檢查部位', '')).strip()
-            parts = [p.strip() for p in parts_str.replace('，', ',').split(',') if p.strip()] if parts_str else []
-            stations.append({'name': name, 'body_parts': parts})
+            rooms = [str(c).strip() for c in row[1:] if str(c).strip()]
+            departments.append({'dept': dept, 'rooms': rooms})
     except Exception as e:
         teachers = []
-        stations = []
+        departments = []
     import json
     return render_template('feedback.html', user=user, roles=session.get('roles', []),
-                           teachers=teachers, stations_json=json.dumps(stations, ensure_ascii=False))
+                           teachers=teachers, departments_json=json.dumps(departments, ensure_ascii=False))
 
 @app.route('/api/submit_feedback', methods=['POST'])
 def submit_feedback():

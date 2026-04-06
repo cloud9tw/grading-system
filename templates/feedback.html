@@ -10,14 +10,13 @@
         body { font-family: 'Inter', sans-serif; }
         .rating-btn { transition: all 0.15s ease; }
         .rating-btn.selected { background: #2563EB; color: white; border-color: #2563EB; transform: scale(1.05); box-shadow: 0 2px 8px rgba(37,99,235,0.3); }
-        .station-btn { transition: all 0.15s ease; }
-        .station-btn.active { background: #2563EB; color: white; border-color: #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.25); }
-        .part-btn { transition: all 0.15s ease; }
-        .part-btn.active { background: #059669; color: white; border-color: #059669; }
+        .dept-btn, .room-btn { transition: all 0.15s ease; }
+        .dept-btn.active { background: #2563EB; color: white; border-color: #2563EB; box-shadow: 0 2px 8px rgba(37,99,235,0.25); }
+        .room-btn.active { background: #059669; color: white; border-color: #059669; }
         .section-card { background: white; border-radius: 1rem; border: 1px solid #e5e7eb; box-shadow: 0 1px 4px rgba(0,0,0,0.05); padding: 1.5rem; margin-bottom: 1.5rem; }
         .section-title { font-size: 1rem; font-weight: 700; color: #1e40af; border-left: 4px solid #2563EB; padding-left: 0.75rem; margin-bottom: 1.25rem; }
-        .rating-section { opacity: 0; pointer-events: none; max-height: 0; overflow: hidden; transition: opacity 0.3s, max-height 0.4s; }
-        .rating-section.visible { opacity: 1; pointer-events: auto; max-height: 9999px; }
+        #ratingSections { display: none; }
+        #ratingSections.visible { display: block; }
     </style>
 </head>
 <body class="bg-gradient-to-br from-blue-50 via-white to-indigo-50 min-h-screen">
@@ -43,14 +42,14 @@
         <p class="text-blue-100 text-sm">本表單旨在改善臨床教學品質，您的回饋將有助於教師的持續成長。請依實際觀察誠實填寫，評分為 1 到 5 分。</p>
     </div>
 
-    <form id="feedbackForm" class="space-y-0">
+    <form id="feedbackForm">
         <!-- 基本資料 -->
         <div class="section-card">
             <p class="section-title">📋 基本資料</p>
             <div class="space-y-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">您的姓名（學生）</label>
-                    <input type="text" id="student_name" value="{{ user.name }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none" placeholder="請填入您的姓名">
+                    <input type="text" id="student_name" value="{{ user.name }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400 outline-none" placeholder="請填入您的姓名">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">評核教師 <span class="text-red-500">*</span></label>
@@ -64,21 +63,25 @@
                     <input type="text" id="other_teacher" class="mt-2 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm hidden" placeholder="請輸入教師姓名">
                 </div>
 
-                <!-- === 站別按鈕選擇 === -->
+                <!-- 第一層：部門選擇 -->
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-2">臨床實習站別 <span class="text-red-500">*</span></label>
-                    <div id="stationBtns" class="flex flex-wrap gap-2">
-                        <!-- 動態生成 -->
-                    </div>
-                    <input type="hidden" id="station" required>
-
-                    <!-- 檢查部位二階段 -->
-                    <div id="bodyPartSection" class="hidden mt-4">
-                        <label class="block text-sm font-medium text-gray-700 mb-2">檢查部位 <span class="text-red-500">*</span></label>
-                        <div id="bodyPartBtns" class="flex flex-wrap gap-2"></div>
-                        <input type="hidden" id="body_part">
-                    </div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">實習部門 <span class="text-red-500">*</span></label>
+                    <div id="deptBtns" class="flex flex-wrap gap-2"></div>
                 </div>
+
+                <!-- 第二層：檢查室選擇（動態顯示） -->
+                <div id="roomSection" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">檢查室 <span class="text-red-500">*</span></label>
+                    <div id="roomBtns" class="flex flex-wrap gap-2"></div>
+                </div>
+
+                <!-- 已選資訊顯示 -->
+                <div id="selectedInfo" class="hidden bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm text-blue-800 font-medium">
+                </div>
+
+                <!-- hidden inputs for form submit -->
+                <input type="hidden" id="station_dept">
+                <input type="hidden" id="station_room">
             </div>
         </div>
 
@@ -91,8 +94,8 @@
             <span class="bg-gray-100 rounded px-2 py-1">5=非常符合</span>
         </div>
 
-        <!-- 評分各區塊（在站別確認前隱藏動畫過渡） -->
-        <div id="ratingSections" class="rating-section">
+        <!-- 評分各區塊（在檢查室確認前隱藏） -->
+        <div id="ratingSections">
 
         <!-- 核心價值與專業責任 -->
         <div class="section-card">
@@ -247,7 +250,7 @@
         <div id="resultMsg" class="hidden rounded-xl p-4 mb-4 text-sm font-medium"></div>
 
         <!-- 提交按鈕 -->
-        <button type="submit" id="submitBtn" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all text-base">
+        <button type="submit" id="submitBtn" class="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg transition-all text-base mb-8">
             ✅ 送出回饋表單
         </button>
 
@@ -256,83 +259,91 @@
 </main>
 
 <script>
-    const ratings = {};
-    const stationsData = {{ stations_json | safe }};
-    let selectedStation = '';
-    let selectedBodyPart = '';
+    var ratings = {};
+    var departmentsData = {{ departments_json | safe }};
+    var selectedDept = '';
+    var selectedRoom = '';
 
-    // === 初始化站別按鈕 ===
-    function initStationButtons() {
-        const container = document.getElementById('stationBtns');
-        stationsData.forEach(s => {
-            const btn = document.createElement('button');
+    // === 初始化部門按鈕 ===
+    function initDeptButtons() {
+        var container = document.getElementById('deptBtns');
+        departmentsData.forEach(function(d) {
+            var btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = 'station-btn px-4 py-2 border-2 border-gray-200 rounded-lg font-semibold text-sm text-gray-700 bg-white hover:border-blue-400 hover:bg-blue-50';
-            btn.textContent = s.name;
-            btn.onclick = () => selectStation(btn, s);
+            btn.className = 'dept-btn px-4 py-2 border-2 border-gray-200 rounded-lg font-semibold text-sm text-gray-700 bg-white hover:border-blue-400 hover:bg-blue-50';
+            btn.textContent = d.dept;
+            btn.onclick = function() { selectDept(btn, d); };
             container.appendChild(btn);
         });
     }
 
-    function selectStation(btn, stationObj) {
-        // Reset all station buttons
-        document.querySelectorAll('.station-btn').forEach(b => b.classList.remove('active'));
+    function selectDept(btn, deptObj) {
+        // 重置部門按鈕
+        document.querySelectorAll('.dept-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
 
-        selectedStation = stationObj.name;
-        selectedBodyPart = '';
-        document.getElementById('station').value = stationObj.name;
-        document.getElementById('body_part').value = '';
+        selectedDept = deptObj.dept;
+        selectedRoom = '';
+        document.getElementById('station_dept').value = deptObj.dept;
+        document.getElementById('station_room').value = '';
 
-        // Show/hide body part section
-        const bpSection = document.getElementById('bodyPartSection');
-        const bpContainer = document.getElementById('bodyPartBtns');
-        bpContainer.innerHTML = '';
+        // 顯示檢查室
+        var roomSection = document.getElementById('roomSection');
+        var roomContainer = document.getElementById('roomBtns');
+        roomContainer.innerHTML = '';
 
-        if (stationObj.body_parts && stationObj.body_parts.length > 0) {
-            bpSection.classList.remove('hidden');
-            stationObj.body_parts.forEach(part => {
-                const btn2 = document.createElement('button');
+        if (deptObj.rooms && deptObj.rooms.length > 0) {
+            roomSection.classList.remove('hidden');
+            deptObj.rooms.forEach(function(room) {
+                var btn2 = document.createElement('button');
                 btn2.type = 'button';
-                btn2.className = 'part-btn px-4 py-2 border-2 border-gray-200 rounded-lg font-medium text-sm text-gray-700 bg-white hover:border-emerald-400 hover:bg-emerald-50';
-                btn2.textContent = part;
-                btn2.onclick = () => selectBodyPart(btn2, part);
-                bpContainer.appendChild(btn2);
+                btn2.className = 'room-btn px-4 py-2 border-2 border-gray-200 rounded-lg font-medium text-sm text-gray-700 bg-white hover:border-emerald-400 hover:bg-emerald-50';
+                btn2.textContent = room;
+                btn2.onclick = function() { selectRoom(btn2, room); };
+                roomContainer.appendChild(btn2);
             });
+            // 隱藏評分區，等選完檢查室再出現
+            document.getElementById('ratingSections').classList.remove('visible');
+            document.getElementById('selectedInfo').classList.add('hidden');
         } else {
-            bpSection.classList.add('hidden');
-            // No body parts required — unlock rating sections
+            // 沒有子室，直接展開評分
+            roomSection.classList.add('hidden');
+            document.getElementById('selectedInfo').textContent = '已選：' + deptObj.dept;
+            document.getElementById('selectedInfo').classList.remove('hidden');
             showRatingSections();
         }
     }
 
-    function selectBodyPart(btn, part) {
-        document.querySelectorAll('.part-btn').forEach(b => b.classList.remove('active'));
+    function selectRoom(btn, room) {
+        document.querySelectorAll('.room-btn').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
-        selectedBodyPart = part;
-        document.getElementById('body_part').value = part;
+        selectedRoom = room;
+        document.getElementById('station_room').value = room;
+
+        var info = document.getElementById('selectedInfo');
+        info.textContent = '已選：' + selectedDept + ' - ' + room;
+        info.classList.remove('hidden');
         showRatingSections();
     }
 
     function showRatingSections() {
         document.getElementById('ratingSections').classList.add('visible');
-        // Smooth scroll to rating sections
-        setTimeout(() => {
+        setTimeout(function() {
             document.getElementById('ratingSections').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 100);
     }
 
     // === 評分按鈕 ===
     function selectRating(btn, group) {
-        const siblings = btn.parentElement.querySelectorAll('.rating-btn');
-        siblings.forEach(b => b.classList.remove('selected'));
+        var siblings = btn.parentElement.querySelectorAll('.rating-btn');
+        siblings.forEach(function(b) { b.classList.remove('selected'); });
         btn.classList.add('selected');
         ratings[group] = btn.getAttribute('data-value');
     }
 
-    // === 教師 "其他" 選項 ===
+    // === 教師「其他」選項 ===
     document.getElementById('teacher').addEventListener('change', function() {
-        const other = document.getElementById('other_teacher');
+        var other = document.getElementById('other_teacher');
         if (this.value === '__other__') {
             other.classList.remove('hidden');
         } else {
@@ -341,22 +352,22 @@
     });
 
     // === 送出 ===
-    document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
+    document.getElementById('feedbackForm').addEventListener('submit', function(e) {
         e.preventDefault();
 
-        const teacher = document.getElementById('teacher').value;
-        const station = document.getElementById('station').value;
-        const suggestion = document.getElementById('suggestion').value.trim();
-        const bodyPartEl = document.getElementById('body_part');
+        var teacher = document.getElementById('teacher').value;
+        var dept = document.getElementById('station_dept').value;
+        var room = document.getElementById('station_room').value;
+        var suggestion = document.getElementById('suggestion').value.trim();
 
-        if (!teacher || !station) {
-            alert('請選擇教師和站別！');
+        if (!teacher || !dept) {
+            alert('請選擇教師和實習部門！');
             return;
         }
-        // If body parts exist for this station, require selection
-        const stObj = stationsData.find(s => s.name === station);
-        if (stObj && stObj.body_parts.length > 0 && !bodyPartEl.value) {
-            alert('請選擇檢查部位！');
+        // 若該部門有檢查室選項，則必選
+        var deptObj = departmentsData.find(function(d) { return d.dept === dept; });
+        if (deptObj && deptObj.rooms.length > 0 && !room) {
+            alert('請選擇檢查室！');
             return;
         }
         if (!suggestion) {
@@ -365,64 +376,63 @@
             return;
         }
 
-        const otherTeacher = document.getElementById('other_teacher').value.trim();
+        var otherTeacher = document.getElementById('other_teacher').value.trim();
+        var stationStr = dept + (room ? ' - ' + room : '');
 
-        const payload = {
+        var payload = {
             student_name: document.getElementById('student_name').value.trim(),
             teacher: teacher === '__other__' ? otherTeacher : teacher,
             other_teacher: teacher === '__other__' ? otherTeacher : '',
-            station: station + (bodyPartEl.value ? ' - ' + bodyPartEl.value : ''),
+            station: stationStr,
             suggestion: suggestion,
-            core: { q1: ratings['core_q1']||'', q2: ratings['core_q2']||'', q3: ratings['core_q3']||'', q4: ratings['core_q4']||'', overall: ratings['core_overall']||'' },
-            care: { q1: ratings['care_q1']||'', q2: ratings['care_q2']||'', overall: ratings['care_overall']||'' },
-            know: { q1: ratings['know_q1']||'', q2: ratings['know_q2']||'', q3: ratings['know_q3']||'', overall: ratings['know_overall']||'' },
-            comm: { q1: ratings['comm_q1']||'', q2: ratings['comm_q2']||'', q3: ratings['comm_q3']||'', overall: ratings['comm_overall']||'' },
-            teach: { q1: ratings['teach_q1']||'', q2: ratings['teach_q2']||'', q3: ratings['teach_q3']||'', q4: ratings['teach_q4']||'' }
+            core: { q1: ratings['core_q1'] || '', q2: ratings['core_q2'] || '', q3: ratings['core_q3'] || '', q4: ratings['core_q4'] || '', overall: ratings['core_overall'] || '' },
+            care: { q1: ratings['care_q1'] || '', q2: ratings['care_q2'] || '', overall: ratings['care_overall'] || '' },
+            know: { q1: ratings['know_q1'] || '', q2: ratings['know_q2'] || '', q3: ratings['know_q3'] || '', overall: ratings['know_overall'] || '' },
+            comm: { q1: ratings['comm_q1'] || '', q2: ratings['comm_q2'] || '', q3: ratings['comm_q3'] || '', overall: ratings['comm_overall'] || '' },
+            teach: { q1: ratings['teach_q1'] || '', q2: ratings['teach_q2'] || '', q3: ratings['teach_q3'] || '', q4: ratings['teach_q4'] || '' }
         };
 
-        const btn = document.getElementById('submitBtn');
-        btn.disabled = true;
-        btn.textContent = '送出中...';
+        var submitBtn = document.getElementById('submitBtn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = '送出中...';
 
-        try {
-            const res = await fetch('/api/submit_feedback', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const result = await res.json();
-            const msgEl = document.getElementById('resultMsg');
+        fetch('/api/submit_feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).then(function(res) { return res.json(); }).then(function(result) {
+            var msgEl = document.getElementById('resultMsg');
             msgEl.classList.remove('hidden');
             if (result.success) {
                 msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-green-100 text-green-800 border border-green-300';
                 msgEl.textContent = '✅ 回饋已成功送出！感謝您的寶貴意見，這將有助於提升教學品質。';
                 document.getElementById('feedbackForm').reset();
-                document.querySelectorAll('.rating-btn, .station-btn, .part-btn').forEach(b => b.classList.remove('selected', 'active'));
-                document.getElementById('station').value = '';
-                document.getElementById('body_part').value = '';
-                document.getElementById('bodyPartSection').classList.add('hidden');
+                document.querySelectorAll('.rating-btn, .dept-btn, .room-btn').forEach(function(b) { b.classList.remove('selected', 'active'); });
+                document.getElementById('station_dept').value = '';
+                document.getElementById('station_room').value = '';
+                document.getElementById('roomSection').classList.add('hidden');
+                document.getElementById('selectedInfo').classList.add('hidden');
                 document.getElementById('ratingSections').classList.remove('visible');
-                document.getElementById('stationBtns').querySelectorAll('.station-btn').forEach(b => b.classList.remove('active'));
-                for (const k in ratings) delete ratings[k];
-                btn.textContent = '✅ 已送出';
+                for (var k in ratings) { delete ratings[k]; }
+                submitBtn.textContent = '✅ 已送出';
             } else {
                 msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
                 msgEl.textContent = '❌ 送出失敗：' + result.error;
-                btn.disabled = false;
-                btn.textContent = '✅ 送出回饋表單';
+                submitBtn.disabled = false;
+                submitBtn.textContent = '✅ 送出回饋表單';
             }
-        } catch (err) {
-            const msgEl = document.getElementById('resultMsg');
+        }).catch(function() {
+            var msgEl = document.getElementById('resultMsg');
             msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
             msgEl.textContent = '❌ 網路錯誤，請稍後再試。';
             msgEl.classList.remove('hidden');
-            btn.disabled = false;
-            btn.textContent = '✅ 送出回饋表單';
-        }
+            submitBtn.disabled = false;
+            submitBtn.textContent = '✅ 送出回饋表單';
+        });
     });
 
     // Init
-    initStationButtons();
+    initDeptButtons();
 </script>
 </body>
 </html>
