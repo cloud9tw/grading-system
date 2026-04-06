@@ -55,8 +55,7 @@ def get_gspread_client():
     if json_str and json_str.strip().startswith('{'):
         try:
             creds_dict = json.loads(json_str)
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-            return gspread.authorize(creds)
+            return gspread.service_account_from_dict(creds_dict, scopes=scope)
         except Exception as e:
             print(f"Error loading credentials from JSON string: {e}")
             raise Exception(f"GCP JSON credentials parse error: {str(e)}")
@@ -72,8 +71,7 @@ def get_gspread_client():
     for path in possible_paths:
         if path and os.path.exists(path):
             try:
-                creds = ServiceAccountCredentials.from_json_keyfile_name(path, scope)
-                return gspread.authorize(creds)
+                return gspread.service_account(filename=path, scopes=scope)
             except Exception as e:
                 print(f"Error loading credentials from {path}: {e}")
                 errors.append(f"[{path}] {str(e)}")
@@ -323,7 +321,10 @@ def submit_feedback():
             # AI: 未登錄教師姓名 (重複 F 欄)
             data.get('other_teacher', '')
         ]
-        sheet.append_row(row, table_range='A1')
+        # 找到最後一行有資料的位置，再往下一行寫入
+        all_values = sheet.get_all_values()
+        next_row = len(all_values) + 1  # 從第 1 行算起，下一個空行
+        sheet.update(f'A{next_row}', [row])
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
