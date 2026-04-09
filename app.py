@@ -177,7 +177,12 @@ def authorize():
                 s_email = str(s.get('Email', '')).strip().lower()
                 if s_email == user_email:
                     roles.append('student')
-                    student_info = {'id': str(s.get('學生ID', '')), 'name': str(s.get('姓名', ''))}
+                    student_info = {
+                        'id': str(s.get('學生ID', '')),
+                        'name': str(s.get('姓名', '')),
+                        'type': str(s.get('學員類別', '')),
+                        'gender': str(s.get('性別', ''))
+                    }
                     break
     except Exception as e:
         print("Role check error:", e)
@@ -846,6 +851,52 @@ def get_student_stats():
             
         return jsonify({'success': True, 'data': records_by_station})
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/student_gamification', methods=['GET'])
+def get_student_gamification():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    if session.get('current_role') != 'student':
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        
+    student_info = session.get('student_info')
+    if not student_info:
+        return jsonify({'success': False, 'error': 'No student info found.'}), 400
+        
+    try:
+        from gamification import get_student_gamification_data
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        data = get_student_gamification_data(gc, doc, student_info)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/leaderboard', methods=['GET'])
+def get_leaderboard():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    if session.get('current_role') != 'student':
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        
+    try:
+        from gamification import get_leaderboard_data
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        data = get_leaderboard_data(gc, doc)
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/student_attendance', methods=['GET'])
