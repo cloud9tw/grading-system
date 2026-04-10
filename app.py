@@ -47,6 +47,18 @@ def safe_get_all_records(worksheet):
         records.append(record)
     return records
 
+def get_bq_client():
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
+    import os
+    try:
+        credentials = service_account.Credentials.from_service_account_file('credentials.json')
+        bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+        return bq_client, credentials.project_id
+    except Exception as e:
+        print("Error initializing BQ Client:", e)
+        return None, None
+
 def get_gspread_client():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
@@ -342,6 +354,31 @@ def submit_feedback():
         all_values = sheet.get_all_values()
         next_row = len(all_values) + 1  # 從第 1 行算起，下一個空行
         sheet.update(f'A{next_row}', [row])
+        
+        # BQ Double-Write
+        try:
+            bq_client, project_id = get_bq_client()
+            if bq_client:
+                dataset_id = f"{project_id}.grading_data"
+                fb_table_id = f"{dataset_id}.feedback_logs"
+                ts_iso = now_dt.isoformat()
+                fb_insert = [{
+                    "timestamp": ts_iso,
+                    "email": user.get('email', ''),
+                    "student_name": data.get('student_name', ''),
+                    "role": data.get('role', ''),
+                    "teacher": data.get('teacher', ''),
+                    "co_teacher": data.get('co_teacher', ''),
+                    "department": data.get('department', ''),
+                    "is_retake": data.get('is_retake', ''),
+                    "score": data.get('score', ''),
+                    "suggestions": data.get('suggestions', '')
+                }]
+                errors = bq_client.insert_rows_json(fb_table_id, fb_insert)
+                if errors: print("BQ Feedback Insert Error:", errors)
+        except Exception as e:
+            print("BQ Insert Error (Feedback):", e)
+            
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -487,6 +524,18 @@ def submit_attendance():
             row = [student_name, teacher_name, co_teacher, sub_room, timestamp, '']
             sheet.append_row(row, table_range="A1")
             
+            try:
+                bq_client, project_id = get_bq_client()
+                if bq_client:
+                    t_iso = now_dt.isoformat()
+                    bq_client.insert_rows_json(f"{project_id}.grading_data.attendance_events", [{
+                        "student_name": student_name, "teacher_name": teacher_name, "co_teacher": co_teacher,
+                        "sub_room": sub_room, "event_type": "CHECK_IN", "event_time": t_iso
+                    }])
+            except Exception as e:
+                print("BQ Attendance Check-in Error:", e)
+                
+
             if alert_needed:
                 threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
                 return jsonify({'success': True, 'msg': f'✅ 簽到成功！(⚠️ 系統偵測到遲到 {time_diff} 分鐘，已發信通報)'})
@@ -515,6 +564,18 @@ def submit_attendance():
             if found_idx != -1:
                 row_num = found_idx + 1
                 sheet.update_cell(row_num, 6, timestamp)
+                
+                try:
+                    bq_client, project_id = get_bq_client()
+                    if bq_client:
+                        t_iso = now_dt.isoformat()
+                        bq_client.insert_rows_json(f"{project_id}.grading_data.attendance_events", [{
+                            "student_name": student_name, "teacher_name": teacher_name, "co_teacher": co_teacher,
+                            "sub_room": sub_room, "event_type": "CHECK_OUT", "event_time": t_iso
+                        }])
+                except Exception as e:
+                    print("BQ Attendance Check-out Error:", e)
+
                 if alert_needed:
                     threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
                     return jsonify({'success': True, 'msg': f'📤 簽退成功！(⚠️ 系統偵測到早退 {time_diff} 分鐘，已通報)'})
@@ -523,6 +584,18 @@ def submit_attendance():
                 # 依指示：若檢查室不一致或找不到紀錄，強迫安插新的一列
                 row = [student_name, teacher_name, co_teacher, sub_room, '', timestamp]
                 sheet.append_row(row, table_range="A1")
+                
+                try:
+                    bq_client, project_id = get_bq_client()
+                    if bq_client:
+                        t_iso = now_dt.isoformat()
+                        bq_client.insert_rows_json(f"{project_id}.grading_data.attendance_events", [{
+                            "student_name": student_name, "teacher_name": teacher_name, "co_teacher": co_teacher,
+                            "sub_room": sub_room, "event_type": "CHECK_OUT", "event_time": t_iso
+                        }])
+                except Exception as e:
+                    print("BQ Attendance Check-out Error:", e)
+
                 if alert_needed:
                     threading.Thread(target=send_attendance_alert_email, args=(student_name, teacher_name, sub_room, action, timestamp, time_diff)).start()
                     return jsonify({'success': True, 'msg': f'⚠️ 無有效簽到紀錄強制簽退！(且早退 {time_diff} 分，已通報)'})
@@ -796,6 +869,24 @@ def submit_grade():
         # 避免 Google 的「自動探測表格」功能發生向右位移（例如跳過前 32 欄）的 BUG
         sheet.append_row(row, table_range="A1")
         
+        # BQ Double-Write
+        try:
+            bq_client, project_id = get_bq_client()
+            if bq_client:
+                # 重新解析 ISO Timestamp
+                dt_iso = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").isoformat()
+                grade_insert = [{
+                    'student_id': student_id, 'student_name': student_name, 'station': station,
+                    'body_part': body_part, 'timestamp': dt_iso, 'teacher_name': teacher_name,
+                    'opa1_sum': opa1_sum, 'opa2_sum': opa2_sum, 'opa3_sum': opa3_sum,
+                    'opa1_items': opa1_items, 'opa2_items': opa2_items, 'opa3_items': opa3_items,
+                    'aspect1': aspect1, 'aspect2': aspect2, 'comment': comment
+                }]
+                errors = bq_client.insert_rows_json(f"{project_id}.grading_data.grading_logs", grade_insert)
+                if errors: print("BQ Grading Insert Error:", errors)
+        except Exception as e:
+            print("BQ Insert Error (Grading):", e)
+            
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
