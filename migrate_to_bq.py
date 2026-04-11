@@ -1,6 +1,6 @@
 import os
-import json
 import datetime
+import re
 from dotenv import load_dotenv
 import gspread
 from google.cloud import bigquery
@@ -23,192 +23,134 @@ def migrate():
     credentials = service_account.Credentials.from_service_account_file('credentials.json')
     bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
     dataset_id = f"{credentials.project_id}.grading_data"
-    
-    # 1. Dataset
-    try:
-        bq_client.get_dataset(dataset_id)
-        print(f"Dataset {dataset_id} already exists.")
-    except Exception:
-        dataset = bigquery.Dataset(dataset_id)
-        dataset.location = "asia-east1"
-        bq_client.create_dataset(dataset, timeout=30)
-        print(f"Created dataset {dataset_id}")
 
-    # 2. Schema Definitions
-    att_schema = [
-        bigquery.SchemaField("student_name", "STRING"),
-        bigquery.SchemaField("teacher_name", "STRING"),
-        bigquery.SchemaField("co_teacher", "STRING"),
-        bigquery.SchemaField("sub_room", "STRING"),
-        bigquery.SchemaField("event_type", "STRING"),
-        bigquery.SchemaField("event_time", "TIMESTAMP"),
-    ]
-    
-    grade_schema = [
-        bigquery.SchemaField("timestamp", "TIMESTAMP"),
-        bigquery.SchemaField("student_id", "STRING"),
-        bigquery.SchemaField("station", "STRING"),
-        bigquery.SchemaField("body_part", "STRING"),
-        bigquery.SchemaField("opa1_sum", "STRING"),
-        bigquery.SchemaField("opa2_sum", "STRING"),
-        bigquery.SchemaField("opa3_sum", "STRING"),
-        bigquery.SchemaField("opa1_items", "STRING", mode="REPEATED"),
-        bigquery.SchemaField("opa2_items", "STRING", mode="REPEATED"),
-        bigquery.SchemaField("opa3_items", "STRING", mode="REPEATED"),
-        bigquery.SchemaField("comment", "STRING"),
-        bigquery.SchemaField("teacher_name", "STRING"),
-        bigquery.SchemaField("status", "STRING")
-    ]
-    
-    fb_schema = [
-        bigquery.SchemaField("timestamp", "TIMESTAMP"),
-        bigquery.SchemaField("email", "STRING"),
-        bigquery.SchemaField("student_name", "STRING"),
-        bigquery.SchemaField("role", "STRING"),
-        bigquery.SchemaField("teacher", "STRING"),
-        bigquery.SchemaField("co_teacher", "STRING"),
-        bigquery.SchemaField("department", "STRING"),
-        bigquery.SchemaField("is_retake", "STRING"),
-        bigquery.SchemaField("score", "STRING"),
-        bigquery.SchemaField("suggestions", "STRING"),
-    ]
+    # Truncate tables for fresh start
+    for t in ['grading_logs', 'feedback_logs', 'attendance_events']:
+        print(f"Truncating {t}...")
+        try:
+            bq_client.query(f"TRUNCATE TABLE `{dataset_id}.{t}`").result()
+        except: pass
 
-    # --- Table Creations ---
-    att_table_id = f"{dataset_id}.attendance_events"
-    try:
-        bq_client.get_table(att_table_id)
-    except Exception:
-        table = bigquery.Table(att_table_id, schema=att_schema)
-        bq_client.create_table(table)
-        print(f"Created table {att_table_id}")
+    def clean_id(val):
+        if not val: return ""
+        v = str(val).strip()
+        if v.endswith('.0'): v = v[:-2]
+        return v
 
-    grade_table_id = f"{dataset_id}.grading_logs"
-    try:
-        bq_client.get_table(grade_table_id)
-    except Exception:
-        table = bigquery.Table(grade_table_id, schema=grade_schema)
-        table.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field="timestamp")
-        table.clustering_fields = ["teacher_name", "station"]
-        bq_client.create_table(table)
-        print(f"Created table {grade_table_id}")
-
-    fb_table_id = f"{dataset_id}.feedback_logs"
-    try:
-        bq_client.get_table(fb_table_id)
-    except Exception:
-        table = bigquery.Table(fb_table_id, schema=fb_schema)
-        table.time_partitioning = bigquery.TimePartitioning(type_=bigquery.TimePartitioningType.DAY, field="timestamp")
-        table.clustering_fields = ["teacher", "department"]
-        bq_client.create_table(table)
-        print(f"Created table {fb_table_id}")
-
-    # --- Data Migration ---
-    # Convert 'yyyy/mm/dd' Google sheet datetime strings to ISO format valid for BigQuery
     def parse_time(t_str):
         if not t_str: return None
-        t_str = t_str.strip()
-        # Usually '%Y-%m-%d %H:%M:%S' or '%Y/%m/%d %H:%M:%S'
-        t_str = t_str.replace('/', '-')
+        s = str(t_str).strip()
+        
+        # Handle Chinese AM/PM
+        is_pm = False
+        if '下午' in s: is_pm = True; s = s.replace('下午', ' ')
+        elif '上午' in s: s = s.replace('上午', ' ')
+        
+        s = s.replace('/', '-')
+        
+        # Try many formats, including single digit month/day
+        fmts = [
+            "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d",
+            "%Y-%m-%d %H:%M:%S", # redundant but safe
+            "%Y-%n-%j", # not real specifiers but thinking about 2025-7-3
+        ]
+        
+        # Best way for messy dates: split and reassemble
         try:
-            return datetime.datetime.strptime(t_str, "%Y-%m-%d %H:%M:%S").isoformat()
-        except:
+            # 2025-7-3 or 2025-7-3 11:22:10
+            parts = s.split()
+            date_parts = [int(x) for x in parts[0].split('-')]
+            h, m, sec = 0, 0, 0
+            if len(parts) > 1:
+                time_parts = [int(x) for x in parts[1].split(':')]
+                h = time_parts[0]
+                m = time_parts[1]
+                if len(time_parts) > 2: sec = time_parts[2]
+            
+            if is_pm and h < 12: h += 12
+            if not is_pm and h == 12: h = 0
+            
+            dt = datetime.datetime(date_parts[0], date_parts[1], date_parts[2], h, m, sec)
+            return dt.isoformat()
+        except Exception as e:
+            # print(f"Parse Error for [{t_str}]: {e}")
             return None
 
+    # 1. Attendance
     print("Migrating Attendance...")
     att_vals = doc.worksheet('上下班打卡記錄').get_all_values()
     att_insert = []
     for r in att_vals[1:]:
-        if len(r) >= 6:
-            s_name, t_name, c_name, room, cin, cout = r[0:6]
+        if len(r) >= 5:
+            s_name, t_name, c_name, room, cin = r[0:5]
+            cout = r[5] if len(r) > 5 else ''
             cin_iso = parse_time(cin)
             if cin_iso:
-                att_insert.append({"student_name": s_name, "teacher_name": t_name, "co_teacher": c_name, "sub_room": room, "event_type": "CHECK_IN", "event_time": cin_iso})
+                att_insert.append({"student_name": s_name, "teacher_name": t_name, "co_teacher": c_name, "sub_room": room, "event_type": "CHECK_IN", "event_time": cin_iso, "is_deleted": False})
             cout_iso = parse_time(cout)
             if cout_iso:
-                att_insert.append({"student_name": s_name, "teacher_name": t_name, "co_teacher": c_name, "sub_room": room, "event_type": "CHECK_OUT", "event_time": cout_iso})
-                
-    if att_insert:
-        errors = bq_client.insert_rows_json(att_table_id, att_insert)
-        if errors: print("Attendance inserting errors:", errors)
-        else: print(f"Migrated {len(att_insert)} attendance event records.")
+                att_insert.append({"student_name": s_name, "teacher_name": t_name, "co_teacher": c_name, "sub_room": room, "event_type": "CHECK_OUT", "event_time": cout_iso, "is_deleted": False})
     
+    if att_insert:
+        bq_client.insert_rows_json(f"{dataset_id}.attendance_events", att_insert)
+        print(f"Migrated {len(att_insert)} attendance events.")
+
+    # 2. Grading
     print("Migrating Grading...")
     grade_vals = doc.worksheet('評分記錄').get_all_values()
     grade_insert = []
     for r in grade_vals[1:]:
-        # row expects 34 cols
-        # pad if shorter
-        r += [''] * (34 - len(r))
-        ts_iso = parse_time(r[0])
-        if ts_iso:
-            grade_insert.append({
-                "timestamp": ts_iso,
-                "student_id": r[1],
-                "station": r[2],
-                "body_part": r[3],
-                "opa1_sum": r[4],
-                "opa2_sum": r[5],
-                "opa3_sum": r[6],
-                "opa1_items": r[7:15],
-                "opa2_items": r[15:23],
-                "opa3_items": r[23:31],
-                "comment": r[31],
-                "teacher_name": r[32] if r[32] else r[1], # some fallback
-                "status": r[33]
-            })
+        if len(r) > 6:
+            ts_iso = parse_time(r[4])
+            if ts_iso:
+                grade_insert.append({
+                    "timestamp": ts_iso,
+                    "student_id": clean_id(r[0]),
+                    "student_name": str(r[1]),
+                    "station": str(r[2]),
+                    "body_part": str(r[3]),
+                    "opa1_sum": str(r[6]),
+                    "opa2_sum": str(r[7]),
+                    "opa3_sum": str(r[8]),
+                    "opa1_items": [str(x) for x in r[9:17]],
+                    "opa2_items": [str(x) for x in r[17:25]],
+                    "opa3_items": [str(x) for x in r[25:33]],
+                    "comment": str(r[35]) if len(r) > 35 else "",
+                    "aspect1": str(r[33]) if len(r) > 33 else "",
+                    "aspect2": str(r[34]) if len(r) > 34 else "",
+                    "teacher_name": str(r[5]),
+                    "is_deleted": False
+                })
     if grade_insert:
-        errors = bq_client.insert_rows_json(grade_table_id, grade_insert)
-        if errors: print("Grading inserting errors:", errors)
-        else: print(f"Migrated {len(grade_insert)} grading records.")
+        bq_client.insert_rows_json(f"{dataset_id}.grading_logs", grade_insert)
+        print(f"Migrated {len(grade_insert)} grading logs.")
 
+    # 3. Feedback
     print("Migrating Feedback...")
     fb_vals = fb_doc.worksheet('表單回應').get_all_values()
     fb_insert = []
     for r in fb_vals[1:]:
-        r += [''] * (10 - len(r))
-        ts_iso = parse_time(r[0])
-        if ts_iso:
-            fb_insert.append({
-                "timestamp": ts_iso,
-                "email": r[1],
-                "student_name": r[2],
-                "role": r[3],
-                "teacher": r[4],
-                "co_teacher": r[5],
-                "department": r[6],
-                "is_retake": r[7],
-                "score": r[8],
-                "suggestions": r[9]
-            })
+        if len(r) > 1:
+            ts_iso = parse_time(r[1])
+            if ts_iso:
+                fb_insert.append({
+                    "timestamp": ts_iso,
+                    "email": str(r[3]),
+                    "student_name": str(r[2]),
+                    "role": "實習學生",
+                    "teacher": str(r[4]),
+                    "co_teacher": str(r[5]),
+                    "department": str(r[6]),
+                    "is_retake": "FALSE",
+                    "score": str(r[32]) if len(r) > 32 else "",
+                    "suggestions": str(r[33]) if len(r) > 33 else "",
+                    "is_deleted": False
+                })
     if fb_insert:
-        errors = bq_client.insert_rows_json(fb_table_id, fb_insert)
-        if errors: print("Feedback inserting errors:", errors)
-        else: print(f"Migrated {len(fb_insert)} feedback records.")
+        bq_client.insert_rows_json(f"{dataset_id}.feedback_logs", fb_insert)
+        print(f"Migrated {len(fb_insert)} feedback logs.")
 
-    print("Creating View: attendance_daily_summary")
-    view_id = f"{dataset_id}.attendance_daily_summary"
-    view_sql = f"""
-    SELECT 
-      student_name,
-      teacher_name,
-      co_teacher,
-      sub_room,
-      DATE(event_time) AS event_date,
-      MIN(CASE WHEN event_type = 'CHECK_IN' THEN event_time END) AS check_in_time,
-      MAX(CASE WHEN event_type = 'CHECK_OUT' THEN event_time END) AS check_out_time
-    FROM `{dataset_id}.attendance_events`
-    GROUP BY student_name, teacher_name, co_teacher, sub_room, DATE(event_time)
-    ORDER BY event_date DESC
-    """
-    try:
-        view = bigquery.Table(view_id)
-        view.view_query = view_sql
-        bq_client.create_table(view, exists_ok=True)
-        print("View created or updated.")
-    except Exception as e:
-        print("Error creating view:", e)
-
-    print("Migration complete!")
+    print("Migration Complete!")
 
 if __name__ == "__main__":
     migrate()

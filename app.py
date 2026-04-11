@@ -1,13 +1,16 @@
 import os
 import json
 import datetime
+import logging
+from google.cloud import bigquery
+from google.oauth2 import service_account
 from flask import Flask, redirect, url_for, session, render_template, request, jsonify
 from authlib.integrations.flask_client import OAuth
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key-12345")
@@ -48,9 +51,6 @@ def safe_get_all_records(worksheet):
     return records
 
 def get_bq_client():
-    from google.cloud import bigquery
-    from google.oauth2 import service_account
-    import os
     try:
         credentials = service_account.Credentials.from_service_account_file('credentials.json')
         bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
@@ -190,7 +190,7 @@ def authorize():
                 if s_email == user_email:
                     roles.append('student')
                     student_info = {
-                        'id': str(s.get('學生ID', '')),
+                        'id': str(s.get('學生ID', '')).strip(),
                         'name': str(s.get('姓名', '')),
                         'type': str(s.get('學員類別', '')),
                         'gender': str(s.get('性別', ''))
@@ -905,43 +905,43 @@ def get_student_stats():
         return jsonify({'success': False, 'error': 'No student info found.'}), 400
         
     try:
-        gc = get_gspread_client()
-        sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        doc = gc.open_by_key(sheet_id)
-        sheet = doc.worksheet('評分記錄')
-        all_vals = sheet.get_all_values()
-        
+        target_id = student_info['id'].strip()
+        import logging
+        logging.info(f"API: Fetching stats for student_id: [{target_id}]")
         records_by_station = {}
-        target_id = student_info['id']
-        
-        for r in all_vals[1:]:
-            if len(r) > 8 and str(r[0]).strip() == target_id:
-                station = str(r[2]).strip()
-                time_str = str(r[4]).strip()
-                opa1 = str(r[6]).strip()
-                opa2 = str(r[7]).strip()
-                opa3 = str(r[8]).strip()
+        bq_client, project_id = get_bq_client()
+        if bq_client:
+            # Temporarily remove is_deleted filter for diagnostic
+            q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum FROM `{project_id}.grading_data.grading_logs` WHERE student_id = @sid AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ScalarQueryParameter("sid", "STRING", target_id)]
+            )
+            res = bq_client.query(q, job_config=job_config).result()
+            
+            row_count = 0
+            def to_int(v):
+                try: return int(v)
+                except: return None
                 
-                def to_int(v):
-                    try: return int(v)
-                    except: return None
-                        
-                pt = {
-                    'time': time_str,
-                    'opa1': to_int(opa1),
-                    'opa2': to_int(opa2),
-                    'opa3': to_int(opa3)
-                }
-                
+            for r in res:
+                row_count += 1
+                station = str(r.station or 'Unknown').strip()
                 if station not in records_by_station:
                     records_by_station[station] = []
-                records_by_station[station].append(pt)
-                
-        for st in records_by_station:
-            records_by_station[st].sort(key=lambda x: x['time'])
-            
-        return jsonify({'success': True, 'data': records_by_station})
+                records_by_station[station].append({
+                    'time': r.timestamp.strftime('%Y/%m/%d %H:%M:%S') if r.timestamp else '',
+                    'opa1': to_int(r.opa1_sum),
+                    'opa2': to_int(r.opa2_sum),
+                    'opa3': to_int(r.opa3_sum)
+                })
+            logging.info(f"API: Found {row_count} rows for student_id: [{target_id}] in project: [{project_id}]")
+            return jsonify({'success': True, 'data': records_by_station, 'count': row_count})
+        else:
+            logging.error("API: BigQuery client could not be initialized (likely missing credentials.json)")
+            return jsonify({'success': False, 'error': 'BigQuery client missing'}), 500
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/student_gamification', methods=['GET'])
@@ -1001,32 +1001,45 @@ def get_student_attendance():
         return jsonify({'success': False, 'error': 'No student info found.'}), 400
         
     try:
-        gc = get_gspread_client()
-        sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        doc = gc.open_by_key(sheet_id)
-        sheet = doc.worksheet('上下班打卡記錄')
-        all_vals = sheet.get_all_values()
-        
         target_name = student_info['name']
         history = []
-        
-        for r in all_vals[1:]:
-            # Header: ['學生', '教師', '共同教師', '檢查室', '簽到時間', '簽退時間']
-            if len(r) >= 5 and str(r[0]).strip() == target_name:
+        bq_client, project_id = get_bq_client()
+        if bq_client:
+            q = f"SELECT sub_room, check_in_time, check_out_time FROM `{project_id}.grading_data.attendance_daily_summary` WHERE student_name = @sname ORDER BY check_in_time DESC"
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ScalarQueryParameter("sname", "STRING", target_name)]
+            )
+            res = bq_client.query(q, job_config=job_config).result()
+            
+            for r in res:
                 history.append({
-                    'teacher': str(r[1]).strip(),
-                    'co_teacher': str(r[2]).strip() if len(r) > 2 else '',
-                    'room': str(r[3]).strip() if len(r) > 3 else '',
-                    'check_in': str(r[4]).strip() if len(r) > 4 else '',
-                    'check_out': str(r[5]).strip() if len(r) > 5 else ''
+                    'room': r.sub_room,
+                    'check_in': r.check_in_time.strftime('%Y/%m/%d %H:%M:%S') if r.check_in_time else '',
+                    'check_out': r.check_out_time.strftime('%Y/%m/%d %H:%M:%S') if r.check_out_time else '',
+                    'is_complete': bool(r.check_in_time and r.check_out_time)
                 })
         
-        # Sort by check_in time descending (newest first)
-        history.sort(key=lambda x: x['check_in'], reverse=True)
-                
         return jsonify({'success': True, 'data': history})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/diag/student/<sid>')
+def diag_student(sid):
+    # Mock login as student ID sid for debugging
+    logging.info(f'DIAG: Mocking login for student ID: {sid}')
+    session['user'] = {
+        'name': 'Debug User',
+        'email': 'debug@example.com',
+        'picture': 'https://ui-avatars.com/api/?name=Debug'
+    }
+    session['current_role'] = 'student'
+    session['student_info'] = {
+        'id': sid.strip(),
+        'name': 'Debug Student',
+        'type': '學員類別', # Force match for testing
+        'gender': '男'
+    }
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     # run locally on port 5000

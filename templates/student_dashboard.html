@@ -408,7 +408,7 @@
                 const result = await res.json();
 
                 document.getElementById('loadingIndicator').classList.add('hidden');
-
+                console.log('Stats Result:', result);
                 if (result.success && Object.keys(result.data).length > 0) {
                     allStats = result.data;
                     document.getElementById('dashboardContent').classList.remove('hidden');

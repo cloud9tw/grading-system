@@ -4,6 +4,9 @@
 # Credentials
 credentials.json
 *.json
+.env
+.flaskenv
+
 
 # Python
 __pycache__/

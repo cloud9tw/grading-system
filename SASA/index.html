@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SASA 流動美學｜課後療癒回饋</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;500;700&display=swap');
+
+        body {
+            font-family: 'Noto Serif TC', serif;
+            background: #fdfbf7;
+            color: #444;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+            border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .form-section {
+            margin-bottom: 2rem;
+            padding: 2.5rem;
+        }
+
+        .rating-input:checked+label {
+            background-color: #8E9775;
+            color: white;
+            border-color: #8E9775;
+            transform: scale(1.1);
+        }
+
+        .submit-btn {
+            background-color: #8E9775;
+            transition: all 0.3s;
+        }
+
+        .submit-btn:hover {
+            background-color: #7A8563;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(142, 151, 117, 0.3);
+        }
+
+        .submit-btn:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+
+<body class="py-12 px-4">
+
+    <div class="max-w-2xl mx-auto">
+        <header class="text-center mb-16">
+            <h1 class="text-3xl font-bold text-stone-800 mb-6 tracking-wide">流動之後，你的心，停在哪裡？</h1>
+            <div class="text-stone-500 leading-relaxed">
+                <p>今天的你，不只是完成了一幅作品，</p>
+                <p>而是讓某一部分的自己，慢慢流動了出來。</p>
+            </div>
+        </header>
+
+        <form id="sasaForm" class="space-y-8">
+
+            <div class="glass-card form-section shadow-sm">
+                <h3 class="text-xs tracking-[0.2em] text-stone-400 mb-4 uppercase">Part 1｜來之前的你</h3>
+                <label class="block text-lg mb-6">Q1｜在來上課之前，你的狀態比較接近？（可複選）</label>
+                <div class="grid grid-cols-1 gap-3">
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q1" value="有點混亂" class="w-5 h-5 accent-[#8E9775]"><span>有點混亂 /
+                            腦袋很滿</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q1" value="有壓力"
+                            class="w-5 h-5 accent-[#8E9775]"><span>有壓力，但說不上來</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q1" value="有點累"
+                            class="w-5 h-5 accent-[#8E9775]"><span>有點累，需要放鬆</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q1" value="專屬時間"
+                            class="w-5 h-5 accent-[#8E9775]"><span>想找一個屬於自己的時間</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q1" value="體驗創作"
+                            class="w-5 h-5 accent-[#8E9775]"><span>單純想體驗創作</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q1" value="回憶" class="w-5 h-5 accent-[#8E9775]"><span>想和孩子 /
+                            朋友一起留下回憶</span></label>
+                    <input type="text" id="q1_other" placeholder="其他感受..."
+                        class="w-full bg-transparent border-b border-stone-200 p-2 mt-2 outline-none">
+                </div>
+            </div>
+
+            <div class="glass-card form-section shadow-sm">
+                <h3 class="text-xs tracking-[0.2em] text-stone-400 mb-4 uppercase">Part 2｜流動之後的你</h3>
+                <label class="block text-lg mb-6">Q2｜課程結束後，你的感受是？（可複選）</label>
+                <div class="grid grid-cols-1 gap-3">
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q2" value="安靜"
+                            class="w-5 h-5 accent-[#8E9775]"><span>心變得比較安靜</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q2" value="釋放"
+                            class="w-5 h-5 accent-[#8E9775]"><span>有種被釋放的感覺</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q2" value="接住"
+                            class="w-5 h-5 accent-[#8E9775]"><span>被好好接住了</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-100 rounded-xl cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q2" value="重新開始"
+                            class="w-5 h-5 accent-[#8E9775]"><span>有一點點重新開始的感覺</span></label>
+                </div>
+            </div>
+
+            <div class="glass-card form-section shadow-sm space-y-10 text-center">
+                <h3 class="text-xs tracking-[0.2em] text-stone-400 mb-4 uppercase text-left">Part 3｜療癒感指標</h3>
+
+                <div>
+                    <label class="block text-lg mb-4">Q3｜這堂課對你的「療癒感」</label>
+                    <div class="flex justify-center space-x-4">
+                        <input type="radio" name="q3" value="1" id="q3_1" class="hidden rating-input" required><label
+                            for="q3_1"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">1</label>
+                        <input type="radio" name="q3" value="2" id="q3_2" class="hidden rating-input"><label for="q3_2"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">2</label>
+                        <input type="radio" name="q3" value="3" id="q3_3" class="hidden rating-input"><label for="q3_3"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">3</label>
+                        <input type="radio" name="q3" value="4" id="q3_4" class="hidden rating-input"><label for="q3_4"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">4</label>
+                        <input type="radio" name="q3" value="5" id="q3_5" class="hidden rating-input"><label for="q3_5"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">5</label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-lg mb-4">Q4｜你的「放鬆程度」</label>
+                    <div class="flex justify-center space-x-4">
+                        <input type="radio" name="q4" value="1" id="q4_1" class="hidden rating-input" required><label
+                            for="q4_1"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">1</label>
+                        <input type="radio" name="q4" value="2" id="q4_2" class="hidden rating-input"><label for="q4_2"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">2</label>
+                        <input type="radio" name="q4" value="3" id="q4_3" class="hidden rating-input"><label for="q4_3"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">3</label>
+                        <input type="radio" name="q4" value="4" id="q4_4" class="hidden rating-input"><label for="q4_4"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">4</label>
+                        <input type="radio" name="q4" value="5" id="q4_5" class="hidden rating-input"><label for="q4_5"
+                            class="w-10 h-10 border border-stone-200 rounded-full flex items-center justify-center cursor-pointer">5</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-card form-section shadow-sm">
+                <label class="block text-lg mb-6 font-medium">Q10｜你還會想參加哪一種課程？（可複選）</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-50 rounded-lg cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q10" value="情緒流動畫" class="accent-[#8E9775]"><span>情緒流動畫</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-50 rounded-lg cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q10" value="親子共學" class="accent-[#8E9775]"><span>親子共學</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-50 rounded-lg cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q10" value="香氣藝術" class="accent-[#8E9775]"><span>香氣藝術</span></label>
+                    <label
+                        class="flex items-center space-x-3 p-3 border border-stone-50 rounded-lg cursor-pointer hover:bg-white"><input
+                            type="checkbox" name="q10" value="進階創作" class="accent-[#8E9775]"><span>進階創作</span></label>
+                </div>
+            </div>
+
+            <div class="glass-card form-section shadow-sm space-y-6">
+                <textarea name="q8" rows="2"
+                    class="w-full bg-white/50 border border-stone-100 p-4 rounded-xl outline-none"
+                    placeholder="Q8：今天讓你最有感的一個瞬間是？"></textarea>
+                <textarea name="q9" rows="2"
+                    class="w-full bg-white/50 border border-stone-100 p-4 rounded-xl outline-none"
+                    placeholder="Q9：如果用一句話，送給今天的自己，你會說？"></textarea>
+            </div>
+
+            <div class="text-center py-12">
+                <button type="submit" id="submitBtn"
+                    class="submit-btn text-white px-16 py-4 rounded-full text-lg tracking-widest shadow-xl">
+                    送出回饋
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('sasaForm');
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerText = "傳送中...";
+
+            // 取得複選與單選資料
+            const getCheckboxes = (name) => Array.from(form.querySelectorAll(`input[name="${name}"]:checked`)).map(i => i.value).join(', ');
+            const getRadio = (name) => {
+                const checked = form.querySelector(`input[name="${name}"]:checked`);
+                return checked ? checked.value : "";
+            };
+
+            const payload = {
+                token: "SASA_FLOW_2026_HEAL",
+                q1: getCheckboxes('q1') + (document.getElementById('q1_other').value ? " | " + document.getElementById('q1_other').value : ""),
+                q2: getCheckboxes('q2'),
+                q3: getRadio('q3'),
+                q4: getRadio('q4'),
+                q5: getRadio('q5'), // 若有補上的話
+                q10: getCheckboxes('q10'),
+                q8: form.q8.value,
+                q9: form.q9.value
+            };
+
+            const scriptURL = 'https://script.google.com/macros/s/AKfycbxirX1mfm5l71saNyZ0X2QAFW-0BHUipzPa-0GF6WTPr4OPyDGMKBJQSW16P8hQXAiCRA/exec';
+
+            try {
+                // 使用 fetch POST 資料
+                await fetch(scriptURL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: JSON.stringify(payload)
+                });
+
+                alert('謝謝你，願意讓自己慢下來。回饋已成功送出。');
+                location.reload();
+            } catch (err) {
+                console.error(err);
+                alert('抱歉，傳送失敗，請檢查網址或連線。');
+                btn.disabled = false;
+                btn.innerText = "重新送出";
+            }
+        };
+    </script>
+</body>
+
+</html>

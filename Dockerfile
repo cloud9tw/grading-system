@@ -1,5 +1,5 @@
-# 選擇官方的輕量級 Python 映像檔
-FROM python:3.9-slim
+# 選擇官方的輕量級 Python 映像檔 (升級至 3.11 以支援新版套件)
+FROM python:3.11-slim
 
 # 設定工作目錄
 WORKDIR /app
@@ -7,8 +7,15 @@ WORKDIR /app
 # 將目前目錄下的檔案全部複製到容器內的 /app
 COPY . /app
 
-# 安裝相依套件
-RUN pip install --no-cache-dir -r requirements.txt
+# 安裝相依套件與編譯工具 (避免 cryptography 或 bigquery 套件安裝失敗)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libffi-dev \
+    libssl-dev \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get purge -y build-essential \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Cloud Run 會提供 PORT 環境變數，綁定 0.0.0.0
 ENV PORT=8080
