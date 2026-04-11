@@ -258,9 +258,15 @@ def get_bq_gamification_logs():
     Returns: (grading_counts, feedback_counts)
     """
     try:
-        credentials = service_account.Credentials.from_service_account_file('credentials.json')
-        client = bigquery.Client(credentials=credentials, project=credentials.project_id)
-        project = credentials.project_id
+        try:
+            credentials = service_account.Credentials.from_service_account_file('credentials.json')
+            client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+            project = credentials.project_id
+        except FileNotFoundError:
+            import google.auth
+            credentials, project = google.auth.default()
+            project = project or "epa-grading-system"
+            client = bigquery.Client(credentials=credentials, project=project)
         
         # 1. Aggregated Grading Logs: Count per (student_id, student_name, station, body_part)
         # Using CAST to ensure student_id is always a string matching our session '8' vs '8.0'

@@ -55,6 +55,12 @@ def get_bq_client():
         credentials = service_account.Credentials.from_service_account_file('credentials.json')
         bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         return bq_client, credentials.project_id
+    except FileNotFoundError:
+        import google.auth
+        credentials, project = google.auth.default()
+        project = project or "epa-grading-system"
+        bq_client = bigquery.Client(credentials=credentials, project=project)
+        return bq_client, project
     except Exception as e:
         print("Error initializing BQ Client:", e)
         return None, None
