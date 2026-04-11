@@ -134,12 +134,24 @@ def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_va
                     relevant_grades.append(r)
 
     for r in relevant_grades:
-        station_dept = str(r[2]).strip()
-        body_part = str(r[3]).strip()
+        # Handle both raw sheet rows (list) and aggregate BQ data (dict)
+        station_dept = ""
+        body_part = ""
+        count_to_add = 1
+        
+        if isinstance(r, dict):
+            station_dept = str(r.get('station', '')).strip()
+            body_part = str(r.get('body_part', '')).strip()
+            count_to_add = int(r.get('cnt', 1))
+        else:
+            station_dept = str(r[2]).strip()
+            body_part = str(r[3]).strip()
+            count_to_add = 1
+
         for cat, stations in epa_progress.items():
             for epa_k, prog in stations.items():
                 if body_part in epa_k or epa_k in body_part or epa_k in station_dept:
-                    prog['current'] += 1
+                    prog['current'] += count_to_add
                     break
 
     # === 2. Feedback Progress ===
@@ -165,16 +177,25 @@ def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_va
                     relevant_fb.append(r)
 
     for r in relevant_fb:
-        dept = str(r[6]).strip()
+        dept = ""
+        count_to_add = 1
+        
+        if isinstance(r, dict):
+            dept = str(r.get('dept', '')).strip()
+            count_to_add = int(r.get('cnt', 1))
+        else:
+            dept = str(r[6]).strip()
+            count_to_add = 1
+            
         found_match = False
         if '急診' in dept:
             for k in feedback_progress.keys():
                 if 'Routine' in k:
-                    feedback_progress[k]['current'] += 1; found_match = True; break
+                    feedback_progress[k]['current'] += count_to_add; found_match = True; break
         if not found_match:
             for k in feedback_progress.keys():
                 if k in dept or dept in k:
-                    feedback_progress[k]['current'] += 1; break
+                    feedback_progress[k]['current'] += count_to_add; break
 
     # === 3. Points & Medals Calculation ===
     points = 0
@@ -232,41 +253,65 @@ def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_va
     }
 
 def get_bq_gamification_logs():
+    """
+    Returns aggregated counts from BigQuery to minimize data transfer and memory usage.
+    Returns: (grading_counts, feedback_counts)
+    """
     try:
         credentials = service_account.Credentials.from_service_account_file('credentials.json')
         client = bigquery.Client(credentials=credentials, project=credentials.project_id)
         project = credentials.project_id
         
-        # 1. Grading
-        q_gps = f"SELECT student_id, student_name, station, body_part, timestamp FROM `{project}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+        # 1. Aggregated Grading Logs: Count per (student_id, student_name, station, body_part)
+        # Using CAST to ensure student_id is always a string matching our session '8' vs '8.0'
+        q_gps = f"""
+            SELECT CAST(student_id AS STRING) as sid, student_name as sname, 
+                   station, body_part, COUNT(*) as cnt 
+            FROM `{project}.grading_data.grading_logs` 
+            WHERE is_deleted = FALSE OR is_deleted IS NULL 
+            GROUP BY 1, 2, 3, 4
+        """
         res_gps = client.query(q_gps).result()
-        gps = [['ID', 'Name', 'Station', 'BodyPart', 'Time']]
+        
+        # Index by student_id and clean student_name
+        grading_counts = {} # { "8": [ {station, body_part, cnt}, ... ], "張明暉": [...] }
         for r in res_gps:
-            gps.append([r.student_id, r.student_name, r.station, r.body_part, r.timestamp.isoformat() if r.timestamp else ''])
+            sid = str(r.sid).split('.')[0]
+            sname = str(r.sname).strip().replace(' ', '').replace('　', '')
+            entry = {"station": r.station, "body_part": r.body_part, "cnt": r.cnt}
             
-        # 2. Feedback
-        q_fps = f"SELECT student_name, department, timestamp FROM `{project}.grading_data.feedback_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+            if sid:
+                if sid not in grading_counts: grading_counts[sid] = []
+                grading_counts[sid].append(entry)
+            if sname:
+                if sname not in grading_counts: grading_counts[sname] = []
+                grading_counts[sname].append(entry)
+            
+        # 2. Aggregated Feedback Logs: Count per (student_name, department)
+        q_fps = f"""
+            SELECT student_name as sname, department as dept, COUNT(*) as cnt 
+            FROM `{project}.grading_data.feedback_logs` 
+            WHERE is_deleted = FALSE OR is_deleted IS NULL 
+            GROUP BY 1, 2
+        """
         res_fps = client.query(q_fps).result()
-        fps = [['', '', 'Name', '', '', '', 'Dept']]
+        feedback_counts = {}
         for r in res_fps:
-            fps.append(['', '', r.student_name, '', '', '', r.department])
+            sname = str(r.sname).strip().replace(' ', '').replace('　', '')
+            if sname:
+                if sname not in feedback_counts: feedback_counts[sname] = []
+                feedback_counts[sname].append({"dept": r.dept, "cnt": r.cnt})
             
-        # 3. Attendance
-        q_aps = f"SELECT student_name, event_time FROM `{project}.grading_data.attendance_events` WHERE is_deleted = FALSE OR is_deleted IS NULL"
-        res_aps = client.query(q_aps).result()
-        aps = [['Name', '', '', '', 'Time', 'Time']]
-        for r in res_aps:
-            aps.append([r.student_name, '', '', '', r.event_time.isoformat(), r.event_time.isoformat()])
-            
-        return gps, fps, aps
+        return grading_counts, feedback_counts
     except Exception as e:
-        print("BQ Gamification fetch error:", e)
-        return [], [], []
+        import traceback
+        traceback.print_exc()
+        return {}, {}
 
 def get_student_gamification_data(gc, doc, student_info):
     eps = doc.worksheet('各類別EPA需求').get_all_values()
     rps = doc.worksheet('檢查室清單').get_all_values()
-    gps, fps, aps = get_bq_gamification_logs()
+    grading_counts, feedback_counts = get_bq_gamification_logs()
     exps = parse_exemptions(doc)
     scoring_config = parse_scoring_config(doc)
     
@@ -277,9 +322,12 @@ def get_student_gamification_data(gc, doc, student_info):
             s_email = str(r[2]).strip()
             break
             
+    # Standardize data for process function
+    indexed_data = {'grades': grading_counts, 'fb': feedback_counts}
+    
     return process_student_gamification(
         student_info.get('id', ''), student_info.get('name', ''), student_info.get('type', ''), student_info.get('gender', ''), s_email,
-        eps, gps, rps, fps, aps, exps, get_first_monday(), datetime.date.today(), scoring_config
+        eps, [], rps, [], [], exps, get_first_monday(), datetime.date.today(), scoring_config, indexed_data
     )
 
 def get_leaderboard_data(gc, doc):
@@ -297,11 +345,8 @@ def get_leaderboard_data(gc, doc):
         name_idx = header.index('姓名') if '姓名' in header else 1
         role_idx = header.index('學員類別') if '學員類別' in header else 4
         
-        gps, fps, aps = get_bq_gamification_logs()
-        
-        # Pre-index logs for O(1) student lookup
-        indexed_grades, indexed_fb = group_logs_by_student(gps, fps)
-        indexed_data = {'grades': indexed_grades, 'fb': indexed_fb}
+        grading_counts, feedback_counts = get_bq_gamification_logs()
+        indexed_data = {'grades': grading_counts, 'fb': feedback_counts}
         
         leaderboard = []
         for r in st_vals[1:]:
@@ -315,8 +360,9 @@ def get_leaderboard_data(gc, doc):
             # Only include person if name exists
             if v['name']:
                 # Pass the indexed data to avoid scanning the logs for each student
+                # We pass empty lists for logs because indexed_data is now our primary source
                 data = process_student_gamification(v['id'], v['name'], v['type'], v['gender'], v['email'],
-                                                   eps, gps, rps, fps, aps, exps, fm, today, scoring_config, indexed_data)
+                                                   eps, [], rps, [], [], exps, fm, today, scoring_config, indexed_data)
                 leaderboard.append({
                     'name': v['name'],
                     'points': data['points'],
