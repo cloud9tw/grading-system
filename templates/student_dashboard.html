@@ -82,30 +82,69 @@
         </div>
         
         <script>
+            function logDiag(msg, type = "INFO") {
+                const logs = document.getElementById('diagLogs');
+                if (!logs) return;
+                const div = document.createElement('div');
+                const time = new Date().toLocaleTimeString();
+                div.innerHTML = `<span class="text-gray-500">[${time}]</span> <span class="${type === 'ERROR' ? 'text-red-400' : 'text-green-400'}">[${type}]</span> ${msg}`;
+                logs.appendChild(div);
+                console.log(`[${type}] ${msg}`);
+            }
+
+            // Failsafe visibility helper
+            function setVisible(id, visible) {
+                const el = document.getElementById(id);
+                if (!el) {
+                    logDiag(`Critical: Element not found - ${id}`, "ERROR");
+                    return;
+                }
+                if (visible) {
+                    el.style.setProperty('display', 'block', 'important');
+                    el.classList.remove('hidden');
+                } else {
+                    el.style.setProperty('display', 'none', 'important');
+                    el.classList.add('hidden');
+                }
+                logDiag(`Set visibility: ${id} -> ${visible}`);
+            }
+
+            // Helper for fetch with timeout
+            async function fetchWithTimeout(resource, options = {}) {
+                const { timeout = 15000 } = options;
+                const controller = new AbortController();
+                const id = setTimeout(() => controller.abort(), timeout);
+                const response = await fetch(resource, {
+                    ...options,
+                    signal: controller.signal
+                });
+                clearTimeout(id);
+                return response;
+            }
+
             function switchTab(tabId) {
-                document.getElementById('tabGrowth').classList.add('hidden');
-                document.getElementById('tabGamification').classList.add('hidden');
-                document.getElementById('tabLeaderboard').classList.add('hidden');
-                
-                document.getElementById('btn-tabGrowth').classList.replace('bg-white', 'hover:text-gray-700');
-                document.getElementById('btn-tabGrowth').classList.replace('text-gray-900', 'text-gray-500');
-                document.getElementById('btn-tabGrowth').classList.remove('shadow-sm');
-                document.getElementById('btn-tabGamification').classList.replace('bg-white', 'hover:text-gray-700');
-                document.getElementById('btn-tabGamification').classList.replace('text-gray-900', 'text-gray-500');
-                document.getElementById('btn-tabGamification').classList.remove('shadow-sm');
-                document.getElementById('btn-tabLeaderboard').classList.replace('bg-white', 'hover:text-gray-700');
-                document.getElementById('btn-tabLeaderboard').classList.replace('text-gray-900', 'text-gray-500');
-                document.getElementById('btn-tabLeaderboard').classList.remove('shadow-sm');
-                
-                document.getElementById(tabId).classList.remove('hidden');
-                const btn = document.getElementById('btn-' + tabId);
-                btn.classList.add('bg-white', 'text-gray-900', 'shadow-sm');
-                btn.classList.remove('text-gray-500', 'hover:text-gray-700');
+                try {
+                    console.log("Switching to tab:", tabId);
+                    const tabs = ['tabGrowth', 'tabGamification', 'tabLeaderboard'];
+                    const buttons = ['btn-tabGrowth', 'btn-tabGamification', 'btn-tabLeaderboard'];
+                    
+                    tabs.forEach(id => setVisible(id, false));
+                    buttons.forEach(id => {
+                        const btn = document.getElementById(id);
+                        if (btn) btn.className = "flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors text-gray-500 hover:text-gray-700";
+                    });
+                    
+                    setVisible(tabId, true);
+                    const activeBtn = document.getElementById('btn-' + tabId);
+                    if (activeBtn) activeBtn.className = "flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors bg-white text-gray-900 shadow-sm";
+                } catch (e) {
+                    alert("切換分頁發生錯誤: " + e.message);
+                }
             }
         </script>
 
         <!-- 視覺化數據中心 (Tab 1: 學習成長) -->
-        <div id="tabGrowth">
+        <div id="tabGrowth" style="display: block;">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
             <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
                 <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -121,11 +160,11 @@
             </div>
 
             <div id="noDataAlert"
-                class="hidden text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                style="display: none;" class="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
                 <p class="text-gray-500">目前還沒有收到任何評分紀錄喔！</p>
             </div>
 
-            <div id="dashboardContent" class="hidden">
+            <div id="dashboardContent" style="display: none;">
                 <!-- 站別按鈕 -->
                 <div id="stationButtons" class="flex flex-wrap gap-2 mb-8">
                     <!-- 動態生成 -->
@@ -138,17 +177,16 @@
             </div>
         </div>
         
-        </div>
         </div> <!-- end tabGrowth -->
 
         <!-- 任務與成就中心 (Tab 2: Gamification) -->
-        <div id="tabGamification" class="hidden space-y-8">
+        <div id="tabGamification" style="display: none;" class="space-y-8">
             <div id="gamificationLoading" class="text-center py-10 bg-white rounded-2xl shadow-sm border border-gray-200">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
                 <p class="text-gray-500 text-sm">正在載入成就與任務進度...</p>
             </div>
             
-            <div id="gamificationContent" class="hidden space-y-8">
+            <div id="gamificationContent" style="display: none;" class="space-y-8">
                 <!-- 積分算法說明 -->
                 <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-800 shadow-sm">
                     <div class="font-bold flex items-center gap-1 mb-1">
@@ -206,52 +244,70 @@
                     </div>
                 </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8 p-6 sm:p-8 relative">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-                    打卡出勤紀錄表
-                </h3>
-                <button onclick="exportPDF()" class="text-sm bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 transition-colors">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    匯出 PDF
-                </button>
+            <!-- 打卡出勤 (底部) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8 p-6 sm:p-8 relative">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                        打卡出勤紀錄表
+                    </h3>
+                    <button onclick="exportPDF()" class="text-sm bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        匯出 PDF
+                    </button>
+                </div>
+                
+                <div id="attendanceContainer" class="overflow-x-auto">
+                    <div class="text-center py-6 text-gray-500 text-sm">載入中...</div>
+                </div>
             </div>
+        </div> <!-- end tabGamificationContent -->
+    </div> <!-- end tabGamification -->
+
+    <!-- 英雄榜 (Tab 3: Leaderboard) -->
+    <div id="tabLeaderboard" style="display: none;" class="w-full">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+            <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                實習學生榮譽榜 (TOP 3)
+            </h3>
             
-            <div id="attendanceContainer" class="overflow-x-auto">
-                <div class="text-center py-6 text-gray-500 text-sm">載入中...</div>
+            <div id="leaderboardLoading" class="text-center py-10">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500 mx-auto mb-4"></div>
+            </div>
+
+            <div id="leaderboardContent" style="display: none;">
+                <div class="overflow-hidden rounded-xl border border-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gradient-to-r from-yellow-50 to-orange-50">
+                            <tr>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">排名</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">實習生</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">綜合積分</th>
+                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">累積獎章</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboardTbody" class="bg-white divide-y divide-gray-200">
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
-        </div> <!-- end tabGamification -->
+    </div>
 
-        <!-- 英雄榜 (Tab 3: Leaderboard) -->
-        <div id="tabLeaderboard" class="hidden">
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-                <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                    <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
-                    實習學生榮譽榜
-                </h3>
-                
-                <div id="leaderboardLoading" class="text-center py-10">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500 mx-auto mb-4"></div>
-                </div>
-
-                <div id="leaderboardContent" class="hidden">
-                    <div class="overflow-hidden rounded-xl border border-gray-200">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gradient-to-r from-yellow-50 to-orange-50">
-                                <tr>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">排名</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">實習生</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">綜合積分</th>
-                                    <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">累積獎章</th>
-                                </tr>
-                            </thead>
-                            <tbody id="leaderboardTbody" class="bg-white divide-y divide-gray-200">
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+        <!-- 🔧 系統診斷主控台 -->
+        <div id="diagConsole" class="mt-12 bg-gray-900 rounded-xl p-6 font-mono text-xs text-green-400 shadow-2xl border border-gray-700">
+            <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
+                <span class="text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Terminal Diagnostic Output
+                </span>
+                <span class="text-gray-600">v1.0.4-hotfix</span>
+            </div>
+            <div id="diagLogs" class="space-y-1 max-h-60 overflow-y-auto">
+                <div>[SYSTEM] Initializing diagnostics...</div>
+                <div>[USER] Name: {{ student_info.name }}</div>
+                <div>[USER] ID: {{ student_info.id }}</div>
             </div>
         </div>
     </main>
@@ -261,29 +317,50 @@
         let allStats = {};
 
         document.addEventListener('DOMContentLoaded', async () => {
-            await fetchStats();
-            await fetchAttendance();
-            await fetchGamification();
-            await fetchLeaderboard();
+            logDiag("DOM Content Loaded - Initializing...");
+            try {
+                // Diagnostic: Check hierarchy
+                const tl = document.getElementById('tabLeaderboard');
+                if (tl) {
+                    logDiag(`Tab Hierarchy: ${tl.parentElement.tagName}#${tl.parentElement.id || 'no-id'}`);
+                }
+
+                // Force initial tab visibility
+                switchTab('tabGrowth');
+                
+                // Launch all fetches in parallel
+                logDiag("Launching parallel data fetches...");
+                fetchStats();
+                fetchAttendance();
+                fetchGamification();
+                fetchLeaderboard();
+                
+                logDiag("All fetch requests dispatched.");
+            } catch (e) {
+                logDiag(`Critical Init Error: ${e.message}`, "ERROR");
+            }
         });
 
         async function fetchGamification() {
+            logDiag("Fetching gamification data...");
             try {
-                const res = await fetch('/api/student_gamification');
+                const res = await fetchWithTimeout('/api/student_gamification');
                 const result = await res.json();
-                document.getElementById('gamificationLoading').classList.add('hidden');
+                
+                logDiag(`Gamification API finished. Success: ${result.success}`);
+                setVisible('gamificationLoading', false);
                 
                 if (result.success && result.data) {
                     const data = result.data;
-                    document.getElementById('gamificationContent').classList.remove('hidden');
+                    setVisible('gamificationContent', true);
                     
                     document.getElementById('g-points').innerText = data.points || 0;
                     document.getElementById('userTypeLabel').innerText = data.student_type || '無';
                     
-                    if (data.student_type === '實習學生') {
-                        document.getElementById('feedbackContainer').classList.remove('hidden');
-                        document.getElementById('internWeekLabel').innerText = data.internship_week || 0;
-                    }
+                    // Show feedback and achievements regardless of exact type string, as long as they are students
+                    setVisible('feedbackContainer', true);
+                    logDiag("Gamification content populated.");
+                    document.getElementById('internWeekLabel').innerText = data.internship_week || 0;
                     
                     // Render Medals
                     const medalBox = document.getElementById('g-medals');
@@ -363,65 +440,114 @@
         }
 
         async function fetchLeaderboard() {
+            logDiag("Fetching leaderboard data...");
+            const loadingEl = document.getElementById('leaderboardLoading');
+            const contentEl = document.getElementById('leaderboardContent');
+            const tbody = document.getElementById('leaderboardTbody');
+
             try {
-                const res = await fetch('/api/leaderboard');
+                const res = await fetchWithTimeout('/api/leaderboard');
                 const result = await res.json();
-                document.getElementById('leaderboardLoading').classList.add('hidden');
                 
+                logDiag(`Leaderboard API finished. Success: ${result.success}, Count: ${result.data?.length || 0}`);
+                setVisible('leaderboardLoading', false);
+                setVisible('leaderboardContent', true);
+
                 if (result.success && result.data) {
-                    document.getElementById('leaderboardContent').classList.remove('hidden');
-                    const tbody = document.getElementById('leaderboardTbody');
+                    if (!tbody) {
+                        logDiag("Critical: leaderboardTbody not found!", "ERROR");
+                        return;
+                    }
                     tbody.innerHTML = '';
                     
-                    result.data.forEach((student, idx) => {
-                        const rank = idx + 1;
-                        let rankHtml = `<span class="text-gray-500 font-mono font-bold">${rank}</span>`;
-                        if (rank === 1) rankHtml = `👑 <span class="text-yellow-600 font-bold ml-1">${rank}</span>`;
-                        else if (rank === 2) rankHtml = `🥈 <span class="text-gray-400 font-bold ml-1">${rank}</span>`;
-                        else if (rank === 3) rankHtml = `🥉 <span class="text-orange-400 font-bold ml-1">${rank}</span>`;
-                        
-                        // Mask name if not top 3
-                        let displayName = student.name;
-                        if (rank > 3 && displayName.length >= 2) {
-                            displayName = displayName.charAt(0) + '○' + (displayName.length > 2 ? displayName.slice(2) : '');
+                    if (result.data.length === 0) {
+                        logDiag("Leaderboard data is empty.");
+                        tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-10 text-center text-gray-500 italic">目前尚未有排名資料</td></tr>';
+                        return;
+                    }
+
+                    logDiag(`Top student: ${result.data[0].name} (${result.data[0].points} pts)`);
+
+                    // Only show TOP 3
+                    const top3 = result.data.slice(0, 3);
+
+                    top3.forEach((student, idx) => {
+                        try {
+                            const rank = idx + 1;
+                            let rankHtml = rank;
+                            if (rank === 1) rankHtml = "👑 1";
+                            else if (rank === 2) rankHtml = "🥈 2";
+                            else if (rank === 3) rankHtml = "🥉 3";
+                            
+                            let displayName = student.name || 'Unknown';
+                            // Name masking removed as per user request
+
+                            const tr = document.createElement('tr');
+                            tr.className = "hover:bg-gray-50 border-b";
+                            tr.innerHTML = `
+                                <td class="px-6 py-4 whitespace-nowrap font-bold">${rankHtml}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs mr-3">
+                                            ${(student.name || '?')[0]}
+                                        </div>
+                                        <div class="text-sm font-medium text-gray-900">${displayName}</div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                                        ${student.points} 分
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    <div class="flex items-center gap-1">
+                                        <svg class="w-4 h-4 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                                        ${student.medals || 0}
+                                    </div>
+                                </td>
+                            `;
+                            tbody.appendChild(tr);
+                        } catch (err) {
+                            console.error("Row render error:", err);
                         }
-                        
-                        tbody.innerHTML += `
-                            <tr class="hover:bg-gray-50 transition-colors">
-                                <td class="px-6 py-4 whitespace-nowrap">${rankHtml}</td>
-                                <td class="px-6 py-4 whitespace-nowrap font-medium text-gray-900">${displayName}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-indigo-600 font-bold text-lg">${student.points}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.medals} 面</td>
-                            </tr>
-                        `;
                     });
+                    logDiag("Leaderboard table populated successfully.");
+                } else {
+                    if (loadingEl) loadingEl.innerHTML = `<p class="text-red-500">API 回傳失敗: ${result.error}</p>`;
                 }
             } catch (e) {
-                console.error("Leaderboard error:", e);
-                document.getElementById('leaderboardLoading').innerHTML = '<p class="text-red-500">載入失敗</p>';
+                logDiag(`Leaderboard Error: ${e.message}`, "ERROR");
+                if (loadingEl) loadingEl.innerHTML = `<p class="text-red-500">網路或系統錯誤: ${e.message}</p>`;
             }
         }
 
         async function fetchStats() {
+            logDiag("Fetching growth stats data...");
             try {
-                const res = await fetch('/api/student_stats');
+                const res = await fetchWithTimeout('/api/student_stats');
                 const result = await res.json();
-
-                document.getElementById('loadingIndicator').classList.add('hidden');
-                console.log('Stats Result:', result);
-                if (result.success && Object.keys(result.data).length > 0) {
+ 
+                setVisible('loadingIndicator', false);
+                logDiag(`Stats API Result: Success=${result.success}`);
+                
+                if (result.success && result.data && Object.keys(result.data).length > 0) {
                     allStats = result.data;
-                    document.getElementById('dashboardContent').classList.remove('hidden');
+                    setVisible('dashboardContent', true);
                     renderButtons();
-                    // 預設渲染第一個站別
-                    const firstStation = Object.keys(allStats)[0];
-                    renderChart(firstStation);
+                    try {
+                        const firstStation = Object.keys(allStats)[0];
+                        renderChart(firstStation);
+                        logDiag(`Growth chart rendered: ${firstStation}`);
+                    } catch (chartError) {
+                        logDiag(`Chart Render Error: ${chartError.message}`, "ERROR");
+                    }
                 } else {
-                    document.getElementById('noDataAlert').classList.remove('hidden');
+                    setVisible('noDataAlert', true);
+                    logDiag("No stats data available.");
                 }
             } catch (e) {
-                console.error("載入失敗", e);
-                document.getElementById('loadingIndicator').innerHTML = '<p class="text-red-500">網路錯誤，無法載入資料</p>';
+                logDiag(`Stats Fetch Error: ${e.message}`, "ERROR");
+                setVisible('loadingIndicator', false);
             }
         }
 
@@ -573,13 +699,22 @@
         }
 
         async function fetchAttendance() {
+            logDiag("Attempting to fetch attendance...");
             try {
-                const res = await fetch('/api/student_attendance');
+                const res = await fetchWithTimeout('/api/student_attendance');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const result = await res.json();
                 
+                logDiag(`Attendance Data Received: ${JSON.stringify(result.data).substring(0, 50)}...`);
+                
                 const container = document.getElementById('attendanceContainer');
-                if (result.success && result.data.length > 0) {
-                    window.attendanceData = result.data;  // Save for PDF export
+                if (!container) {
+                    logDiag("Error: attendanceContainer element missing!", "ERROR");
+                    return;
+                }
+
+                if (result.success && result.data && result.data.length > 0) {
+                    window.attendanceData = result.data;
                     let html = `
                         <table id="attendanceTable" class="min-w-full divide-y divide-gray-200 table-fixed text-sm">
                             <thead class="bg-gray-50">
@@ -588,7 +723,6 @@
                                     <th scope="col" class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">退勤時間</th>
                                     <th scope="col" class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">檢查室</th>
                                     <th scope="col" class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">主護教師</th>
-                                    <th scope="col" class="px-6 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">共同教師</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -597,22 +731,28 @@
                     result.data.forEach(item => {
                         html += `
                             <tr class="hover:bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap text-green-700">${item.check_in || '-'}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-red-700">${item.check_out || '-'}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-green-700 font-mono">${item.check_in || '-'}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-red-700 font-mono">${item.check_out || '-'}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-gray-900">${item.room || '-'}</td>
                                 <td class="px-6 py-4 whitespace-nowrap text-gray-900">${item.teacher || '-'}</td>
-                                <td class="px-6 py-4 whitespace-nowrap text-gray-500">${item.co_teacher || '-'}</td>
                             </tr>
                         `;
                     });
                     
                     html += `</tbody></table>`;
                     container.innerHTML = html;
+                    logDiag("Attendance table rendered successfully.");
                 } else {
-                    container.innerHTML = '<div class="text-center py-6 text-gray-500 text-sm">目前無任何出勤紀錄</div>';
+                    logDiag("No attendance records found for this user.");
+                    container.innerHTML = `
+                        <div class="text-center py-10 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200 text-gray-400">
+                            目前尚未抓取到您的出勤紀錄
+                        </div>`;
                 }
             } catch(e) {
-                document.getElementById('attendanceContainer').innerHTML = '<div class="text-center py-6 text-red-500 text-sm">讀取出勤紀錄失敗</div>';
+                logDiag(`Attendance Error: ${e.message}`, "ERROR");
+                const container = document.getElementById('attendanceContainer');
+                if (container) container.innerHTML = `<div class="text-center py-6 text-red-500">無法讀取出勤紀錄: ${e.message}</div>`;
             }
         }
 
@@ -650,15 +790,19 @@
                         </tr>
                     </thead>
                     <tbody>
-                        ${window.attendanceData.map((item, idx) => `
-                            <tr style="background:${idx % 2 === 0 ? '#f5f7fa' : '#ffffff'};">
-                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_in || '-'}</td>
-                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_out || '-'}</td>
-                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.room || '-'}</td>
-                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.teacher || '-'}</td>
-                                <td style="padding:7px 6px;border:1px solid #ddd;">${item.co_teacher || '-'}</td>
-                            </tr>
-                        `).join('')}
+                        ${window.attendanceData.map((item, idx) => {
+                            const teacher = item.teacher || item.teacher_name || '-';
+                            const coTeacher = item.co_teacher || '-';
+                            return `
+                                <tr style="background:${idx % 2 === 0 ? '#f5f7fa' : '#ffffff'};">
+                                    <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_in || '-'}</td>
+                                    <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_out || '-'}</td>
+                                    <td style="padding:7px 6px;border:1px solid #ddd;">${item.room || '-'}</td>
+                                    <td style="padding:7px 6px;border:1px solid #ddd;">${teacher}</td>
+                                    <td style="padding:7px 6px;border:1px solid #ddd;">${coTeacher}</td>
+                                </tr>
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             `;

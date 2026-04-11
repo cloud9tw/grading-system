@@ -7,6 +7,31 @@ from google.oauth2 import service_account
 def get_first_monday():
     return datetime.date(2025, 7, 7)
 
+def parse_scoring_config(doc):
+    # Default values
+    config = {
+        'epa_score': 10,
+        'fb_score': 5,
+        'epa_bonus': 100,
+        'fb_bonus': 50
+    }
+    try:
+        sheet = doc.worksheet('遊戲化配分設定')
+        vals = sheet.get_all_values()
+        for r in vals[1:]:
+            if len(r) >= 2:
+                key = str(r[0]).strip()
+                try:
+                    val = int(r[1])
+                    if key == 'EPA評核得分': config['epa_score'] = val
+                    elif key == '教學回饋得分': config['fb_score'] = val
+                    elif key == '達成所有EPA加分': config['epa_bonus'] = val
+                    elif key == '達成所有回饋加分': config['fb_bonus'] = val
+                except: pass
+    except:
+        pass
+    return config
+
 def parse_exemptions(doc):
     try:
         sheet = doc.worksheet('排除計時日期')
@@ -24,10 +49,51 @@ def parse_exemptions(doc):
     except:
         return {}
 
-def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_vals, grade_vals, room_vals, fb_vals, attendance_vals, exemptions, first_monday, today):
+def group_logs_by_student(grade_vals, fb_vals):
+    # Mapping standardized name/id to their records
+    indexed_grades = {}
+    indexed_fb = {}
+    
+    # Process grading logs
+    if grade_vals and len(grade_vals) > 1:
+        for r in grade_vals[1:]:
+            if len(r) > 3:
+                r_id = str(r[0]).strip()
+                r_name = str(r[1]).strip().replace(' ', '').replace('　', '')
+                
+                # Create a list for both the ID and the clean Name
+                if r_id:
+                    # Handle both integer and float string IDs
+                    base_id = r_id.split('.')[0]
+                    if base_id not in indexed_grades: indexed_grades[base_id] = []
+                    indexed_grades[base_id].append(r)
+                if r_name:
+                    if r_name not in indexed_grades: indexed_grades[r_name] = []
+                    indexed_grades[r_name].append(r)
+    
+    # Process feedback logs
+    if fb_vals and len(fb_vals) > 1:
+        for r in fb_vals[1:]:
+            if len(r) > 2:
+                r_name = str(r[2]).strip().replace(' ', '').replace('　', '')
+                if r_name:
+                    if r_name not in indexed_fb: indexed_fb[r_name] = []
+                    indexed_fb[r_name].append(r)
+                    
+    return indexed_grades, indexed_fb
+
+def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_vals, grade_vals, room_vals, fb_vals, attendance_vals, exemptions, first_monday, today, scoring_config=None, indexed_data=None):
+    if scoring_config is None:
+        scoring_config = {'epa_score': 10, 'fb_score': 5, 'epa_bonus': 100, 'fb_bonus': 50}
+        
     # Standardize s_id and s_name
     s_id = str(s_id).strip()
     s_name = str(s_name).strip()
+    clean_s_name = s_name.replace(' ', '').replace('　', '') # Remove both half-width and full-width spaces
+
+    # Normalize Student Type
+    if not s_type or s_type.strip() == "":
+        s_type = '實習學生'
 
     # === 1. EPA Progress ===
     epa_progress = {}
@@ -45,54 +111,70 @@ def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_va
             station = str(r[0]).strip()
             if station.upper().startswith('EPA'):
                 curr_cat = station; continue
-            # Check if this station has a target for this student type
             val_str = str(r[type_idx]) if type_idx < len(r) else ''
             m = re.search(r'\d+', val_str)
             if m:
                 if curr_cat not in epa_progress: epa_progress[curr_cat] = {}
                 epa_progress[curr_cat][station] = {'target': int(m.group(0)), 'current': 0}
 
-    # Count Progress from Grading Logs (ID based primary, Name fallback)
-    for r in grade_vals[1:]:
-        if len(r) > 3:
-            r_id = str(r[0]).strip()
-            r_name = str(r[1]).strip()
-            # Match by clean ID or Name
-            if (s_id and r_id == s_id) or (r_name == s_name):
-                station_dept = str(r[2]).strip()
-                body_part = str(r[3]).strip()
-                for cat, stations in epa_progress.items():
-                    for epa_k, prog in stations.items():
-                        # Matching logic: if station or body part is in the target key
-                        if body_part in epa_k or epa_k in body_part or epa_k in station_dept:
-                            prog['current'] += 1
-                            break
+    # Count EPA Progress using either indexed data or scanning the whole list
+    relevant_grades = []
+    if indexed_data and 'grades' in indexed_data:
+        # Check both ID and Name in the index
+        relevant_grades = indexed_data['grades'].get(s_id, [])
+        if not relevant_grades:
+            relevant_grades = indexed_data['grades'].get(clean_s_name, [])
+    else:
+        # Fallback to scanning (Keep for individual calls)
+        for r in grade_vals[1:]:
+            if len(r) > 3:
+                r_id = str(r[0]).strip()
+                r_name = str(r[1]).strip().replace(' ', '').replace('　', '')
+                if (s_id and (r_id == s_id or r_id == s_id + ".0")) or (r_name == clean_s_name):
+                    relevant_grades.append(r)
+
+    for r in relevant_grades:
+        station_dept = str(r[2]).strip()
+        body_part = str(r[3]).strip()
+        for cat, stations in epa_progress.items():
+            for epa_k, prog in stations.items():
+                if body_part in epa_k or epa_k in body_part or epa_k in station_dept:
+                    prog['current'] += 1
+                    break
 
     # === 2. Feedback Progress ===
     feedback_progress = {}
-    if s_type == '實習學生':
-        for r in room_vals:
-            if not r: continue
-            dept = str(r[0]).strip()
-            if not dept: continue
-            m = re.search(r'\d+', str(r[-1]).strip())
-            if m:
-                target_val = int(m.group(0))
-                if 'Mammo' in dept and s_gender == '男': target_val = 0
-                if target_val > 0: feedback_progress[dept] = {'target': target_val, 'current': 0}
+    for r in room_vals:
+        if not r: continue
+        dept = str(r[0]).strip()
+        if not dept: continue
+        m = re.search(r'\d+', str(r[-1]).strip())
+        if m:
+            target_val = int(m.group(0))
+            if 'Mammo' in dept and s_gender == '男': target_val = 0
+            if target_val > 0: feedback_progress[dept] = {'target': target_val, 'current': 0}
+            
+    relevant_fb = []
+    if indexed_data and 'fb' in indexed_data:
+        relevant_fb = indexed_data['fb'].get(clean_s_name, [])
+    else:
         for r in fb_vals[1:]:
-            # Use Name for feedback since BQ doesn't have Student ID in feedback sheet yet
-            if len(r) > 2 and str(r[2]).strip() == s_name:
-                dept = str(r[6]).strip()
-                found_match = False
-                if '急診' in dept:
-                    for k in feedback_progress.keys():
-                        if 'Routine' in k:
-                            feedback_progress[k]['current'] += 1; found_match = True; break
-                if not found_match:
-                    for k in feedback_progress.keys():
-                        if k in dept or dept in k:
-                            feedback_progress[k]['current'] += 1; break
+            if len(r) > 2:
+                r_name = str(r[2]).strip().replace(' ', '').replace('　', '')
+                if r_name == clean_s_name:
+                    relevant_fb.append(r)
+
+    for r in relevant_fb:
+        dept = str(r[6]).strip()
+        found_match = False
+        if '急診' in dept:
+            for k in feedback_progress.keys():
+                if 'Routine' in k:
+                    feedback_progress[k]['current'] += 1; found_match = True; break
+        if not found_match:
+            for k in feedback_progress.keys():
+                if k in dept or dept in k:
+                    feedback_progress[k]['current'] += 1; break
 
     # === 3. Points & Medals Calculation ===
     points = 0
@@ -106,7 +188,7 @@ def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_va
         for k, v in stations.items():
             cat_has_data = True
             has_epa_targets = True
-            points += v['current'] * 10
+            points += v['current'] * scoring_config['epa_score']
             if v['current'] < v['target']:
                 cat_done = False
                 epa_master = False
@@ -115,42 +197,38 @@ def process_student_gamification(s_id, s_name, s_type, s_gender, s_email, epa_va
             medals.append({'name': f"{name_prefix}專精", 'desc': f"完成 {cat} 所有需求", 'achieved': cat_done})
             
     if has_epa_targets:
+        if epa_master: points += scoring_config['epa_bonus']
         medals.append({'name': 'EPA 大師', 'desc': '所有身分設定之 EPA 分類全數解鎖', 'achieved': epa_master})
         
     feedback_master = True
     has_fb_targets = False
     for k, v in feedback_progress.items():
         has_fb_targets = True
-        points += v['current'] * 5
+        points += v['current'] * scoring_config['fb_score']
         fb_done = (v['current'] >= v['target'])
         if not fb_done: feedback_master = False
         name_prefix = k.split('(')[-1].replace(')', '') if '(' in k else k
         medals.append({'name': f"{name_prefix}回饋召集", 'desc': f"繳交 {k} 教學回饋表單", 'achieved': fb_done})
         
     if has_fb_targets:
+        if feedback_master: points += scoring_config['fb_bonus']
         medals.append({'name': '回饋達人', 'desc': '所有目標站別之回饋表單全數達成', 'achieved': feedback_master})
         
-    # === 4. Attendance ===
-    attended_dates = {}
-    for r in attendance_vals[1:]:
-        if len(r) > 5 and str(r[0]).strip() == s_name:
-            # Timestamp format in BQ: 2026-04-10T08:46:43
-            try:
-                cin = str(r[5]).replace('T', ' ').split('.')[0]
-                d = datetime.datetime.strptime(cin, "%Y-%m-%d %H:%M:%S").date()
-                if d not in attended_dates: attended_dates[d] = {'in': True, 'out': True} # BQ daily summary already implies both if we use that view
-            except: pass
-                    
-    # (Simplified attendance logic for performance in leaderboard)
-    perfect_months = 0
-    # ... (skipping some complex perfect month logic for leaderboard brevity if needed, but keeping for student)
-    
+    # === 3.5 Internship Week ===
+    internship_week = 0
+    if first_monday and today:
+        delta = today - first_monday
+        internship_week = (delta.days // 7) + 1
+        
+    # === 4. Return ===
     return {
         'points': points,
         'epa_progress': epa_progress,
         'feedback_progress': feedback_progress,
         'medals': medals,
-        'achieved_count': sum(1 for m in medals if m['achieved'])
+        'achieved_count': sum(1 for m in medals if m['achieved']),
+        'student_type': s_type,
+        'internship_week': internship_week
     }
 
 def get_bq_gamification_logs():
@@ -160,12 +238,11 @@ def get_bq_gamification_logs():
         project = credentials.project_id
         
         # 1. Grading
-        q_gps = f"SELECT student_id, student_name, station, body_part, timestamp, teacher_name, opa1_sum, opa2_sum, opa3_sum, opa1_items, opa2_items, opa3_items, aspect1, aspect2, comment FROM `{project}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+        q_gps = f"SELECT student_id, student_name, station, body_part, timestamp FROM `{project}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
         res_gps = client.query(q_gps).result()
-        gps = [['ID', 'Name', 'Station', 'BodyPart', 'Time', 'Teacher', 'OPA1', 'OPA2', 'OPA3']]
+        gps = [['ID', 'Name', 'Station', 'BodyPart', 'Time']]
         for r in res_gps:
-            row = [r.student_id, r.student_name, r.station, r.body_part, r.timestamp.isoformat() if r.timestamp else '', r.teacher_name, r.opa1_sum, r.opa2_sum, r.opa3_sum]
-            gps.append(row)
+            gps.append([r.student_id, r.student_name, r.station, r.body_part, r.timestamp.isoformat() if r.timestamp else ''])
             
         # 2. Feedback
         q_fps = f"SELECT student_name, department, timestamp FROM `{project}.grading_data.feedback_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
@@ -175,7 +252,7 @@ def get_bq_gamification_logs():
             fps.append(['', '', r.student_name, '', '', '', r.department])
             
         # 3. Attendance
-        q_aps = f"SELECT student_name, event_time as event_time FROM `{project}.grading_data.attendance_events` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+        q_aps = f"SELECT student_name, event_time FROM `{project}.grading_data.attendance_events` WHERE is_deleted = FALSE OR is_deleted IS NULL"
         res_aps = client.query(q_aps).result()
         aps = [['Name', '', '', '', 'Time', 'Time']]
         for r in res_aps:
@@ -191,6 +268,7 @@ def get_student_gamification_data(gc, doc, student_info):
     rps = doc.worksheet('檢查室清單').get_all_values()
     gps, fps, aps = get_bq_gamification_logs()
     exps = parse_exemptions(doc)
+    scoring_config = parse_scoring_config(doc)
     
     s_email = ""
     st_vals = doc.worksheet('學員名單').get_all_values()
@@ -201,7 +279,7 @@ def get_student_gamification_data(gc, doc, student_info):
             
     return process_student_gamification(
         student_info.get('id', ''), student_info.get('name', ''), student_info.get('type', ''), student_info.get('gender', ''), s_email,
-        eps, gps, rps, fps, aps, exps, get_first_monday(), datetime.date.today()
+        eps, gps, rps, fps, aps, exps, get_first_monday(), datetime.date.today(), scoring_config
     )
 
 def get_leaderboard_data(gc, doc):
@@ -209,6 +287,7 @@ def get_leaderboard_data(gc, doc):
         eps = doc.worksheet('各類別EPA需求').get_all_values()
         rps = doc.worksheet('檢查室清單').get_all_values()
         exps = parse_exemptions(doc)
+        scoring_config = parse_scoring_config(doc)
         fm = get_first_monday()
         today = datetime.date.today()
         
@@ -216,22 +295,28 @@ def get_leaderboard_data(gc, doc):
         header = st_vals[0]
         id_idx = header.index('學生ID') if '學生ID' in header else 0
         name_idx = header.index('姓名') if '姓名' in header else 1
-        role_idx = header.index('職級') if '職級' in header else 4
+        role_idx = header.index('學員類別') if '學員類別' in header else 4
         
         gps, fps, aps = get_bq_gamification_logs()
         
+        # Pre-index logs for O(1) student lookup
+        indexed_grades, indexed_fb = group_logs_by_student(gps, fps)
+        indexed_data = {'grades': indexed_grades, 'fb': indexed_fb}
+        
         leaderboard = []
         for r in st_vals[1:]:
-            if len(r) > role_idx and str(r[role_idx]).strip() == '實習學生':
-                v = {
-                    'id': str(r[id_idx]).strip(),
-                    'name': str(r[name_idx]).strip(),
-                    'type': '實習學生',
-                    'gender': str(r[header.index('性別')]).strip() if '性別' in header else '',
-                    'email': str(r[2]).strip() if len(r) > 2 else ''
-                }
+            v = {
+                'id': str(r[id_idx]).strip(),
+                'name': str(r[name_idx]).strip(),
+                'type': str(r[role_idx]).strip() if len(r) > role_idx else '',
+                'gender': str(r[header.index('性別')]).strip() if '性別' in header else '',
+                'email': str(r[2]).strip() if len(r) > 2 else ''
+            }
+            # Only include person if name exists
+            if v['name']:
+                # Pass the indexed data to avoid scanning the logs for each student
                 data = process_student_gamification(v['id'], v['name'], v['type'], v['gender'], v['email'],
-                                                   eps, gps, rps, fps, aps, exps, fm, today)
+                                                   eps, gps, rps, fps, aps, exps, fm, today, scoring_config, indexed_data)
                 leaderboard.append({
                     'name': v['name'],
                     'points': data['points'],

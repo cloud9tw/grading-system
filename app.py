@@ -905,18 +905,33 @@ def get_student_stats():
         return jsonify({'success': False, 'error': 'No student info found.'}), 400
         
     try:
-        target_id = student_info['id'].strip()
+        # Step 1: Normalize Target ID from session (Ensure it's a clean string)
+        target_id = str(student_info.get('id', '')).split('.')[0].strip()
+        target_name = str(student_info.get('name', '')).strip()
+        
         import logging
-        logging.info(f"API: Fetching stats for student_id: [{target_id}]")
+        logging.info(f"API: [Stats] Fetching for ID: [{target_id}], Name: [{target_name}]")
+        
         records_by_station = {}
         bq_client, project_id = get_bq_client()
+        
         if bq_client:
-            # Temporarily remove is_deleted filter for diagnostic
-            q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum FROM `{project_id}.grading_data.grading_logs` WHERE student_id = @sid AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+            # Use CAST in SQL to handle cases where student_id might be INTEGER in BQ vs STRING in Session
+            q = f"""
+                SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum 
+                FROM `{project_id}.grading_data.grading_logs` 
+                WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) 
+                AND (is_deleted = FALSE OR is_deleted IS NULL) 
+                ORDER BY timestamp ASC
+            """
             job_config = bigquery.QueryJobConfig(
-                query_parameters=[bigquery.ScalarQueryParameter("sid", "STRING", target_id)]
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("sid", "STRING", target_id),
+                    bigquery.ScalarQueryParameter("sname", "STRING", target_name)
+                ]
             )
-            res = bq_client.query(q, job_config=job_config).result()
+            query_job = bq_client.query(q, job_config=job_config)
+            res = query_job.result(timeout=20) 
             
             row_count = 0
             def to_int(v):
@@ -974,8 +989,6 @@ def get_leaderboard():
     user = session.get('user')
     if not user:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-    if session.get('current_role') != 'student':
-        return jsonify({'success': False, 'error': 'Forbidden'}), 403
         
     try:
         from gamification import get_leaderboard_data
@@ -1001,26 +1014,38 @@ def get_student_attendance():
         return jsonify({'success': False, 'error': 'No student info found.'}), 400
         
     try:
-        target_name = student_info['name']
+        # Prepare name variations to avoid REPLACE in SQL
+        name_orig = student_info['name']
+        name_clean = name_orig.replace(' ', '').replace('　', '')
+        search_names = list(set([name_orig, name_clean]))
+        
         history = []
         bq_client, project_id = get_bq_client()
         if bq_client:
-            q = f"SELECT sub_room, check_in_time, check_out_time FROM `{project_id}.grading_data.attendance_daily_summary` WHERE student_name = @sname ORDER BY check_in_time DESC"
+            q = f"SELECT sub_room, check_in_time, check_out_time, teacher_name, co_teacher FROM `{project_id}.grading_data.attendance_daily_summary` WHERE student_name IN UNNEST(@names) ORDER BY check_in_time DESC"
             job_config = bigquery.QueryJobConfig(
-                query_parameters=[bigquery.ScalarQueryParameter("sname", "STRING", target_name)]
+                query_parameters=[bigquery.ArrayQueryParameter("names", "STRING", search_names)]
             )
-            res = bq_client.query(q, job_config=job_config).result()
+            # Add explicit timeout of 20 seconds to prevent hanging the Flask thread
+            query_job = bq_client.query(q, job_config=job_config)
+            res = query_job.result(timeout=20)
             
             for r in res:
+                # Convert row to dict for safer access across different versions of BQ client
+                row_dict = dict(r)
                 history.append({
-                    'room': r.sub_room,
-                    'check_in': r.check_in_time.strftime('%Y/%m/%d %H:%M:%S') if r.check_in_time else '',
-                    'check_out': r.check_out_time.strftime('%Y/%m/%d %H:%M:%S') if r.check_out_time else '',
-                    'is_complete': bool(r.check_in_time and r.check_out_time)
+                    'room': row_dict.get('sub_room', ''),
+                    'check_in': row_dict.get('check_in_time').strftime('%Y/%m/%d %H:%M:%S') if row_dict.get('check_in_time') else '',
+                    'check_out': row_dict.get('check_out_time').strftime('%Y/%m/%d %H:%M:%S') if row_dict.get('check_out_time') else '',
+                    'teacher': row_dict.get('teacher_name', ''),
+                    'co_teacher': row_dict.get('co_teacher', ''),
+                    'is_complete': bool(row_dict.get('check_in_time') and row_dict.get('check_out_time'))
                 })
         
         return jsonify({'success': True, 'data': history})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/diag/student/<sid>')
