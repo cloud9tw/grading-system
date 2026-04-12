@@ -365,7 +365,8 @@
                 document.getElementById('selectedInfo').classList.add('hidden');
                 document.getElementById('ratingSections').classList.remove('visible');
                 for (var k in ratings) { delete ratings[k]; }
-                submitBtn.textContent = '✅ 已送出';
+                submitBtn.disabled = false;
+                submitBtn.textContent = '✅ 送出回饋表單';
             } else {
                 msgEl.className = 'rounded-xl p-4 mb-4 text-sm font-medium bg-red-100 text-red-800 border border-red-300';
                 msgEl.textContent = '❌ 送出失敗：' + result.error;
