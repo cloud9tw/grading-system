@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>出勤異常監控 - 管理員</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .anomaly-row:hover { background-color: #fff9f9; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen pb-20">
+
+    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <a href="/admin" class="flex items-center text-gray-900 hover:text-gray-600 transition">
+                         <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        <span class="font-bold text-xl">管理員後台</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        <div class="mb-8 flex justify-between items-end">
+            <div>
+                <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight">🚨 出勤異常監控</h1>
+                <p class="mt-2 text-gray-600">系統自動篩選遲到 (>08:40)、早退 (<17:00) 或未簽退的紀錄。</p>
+            </div>
+            <button onclick="fetchAnomalies()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                重新整理
+            </button>
+        </div>
+
+        <div class="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+            <div id="loading" class="py-20 text-center">
+                <div class="animate-spin h-10 w-10 text-indigo-500 mx-auto mb-4 border-4 border-indigo-200 border-t-indigo-600 rounded-full"></div>
+                <p class="text-gray-500 font-medium">盤點異常數據中...</p>
+            </div>
+
+            <div id="noData" class="hidden py-20 text-center">
+                <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900">太棒了！目前沒有未處理的異常</h3>
+                <p class="text-gray-500 mt-2">所有學員均準時出勤或已完成修正。</p>
+            </div>
+
+            <div id="tableContainer" class="hidden overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">日期 / 姓名</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">檢查室 / 紀錄教師</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">簽到時間 / 狀態</th>
+                            <th class="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">簽退時間 / 狀態</th>
+                            <th class="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">系統操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="anomalyTbody" class="bg-white divide-y divide-gray-200">
+                        <!-- Dynamic Rows -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- 修正時間 Modal -->
+    <div id="adjustModal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-[100] px-4 backdrop-blur-sm transition-all">
+        <div class="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl scale-in transform transition-transform">
+            <h2 class="text-2xl font-bold text-gray-900 mb-2">修正出勤時間</h2>
+            <p id="targetInfo" class="text-indigo-600 font-semibold mb-6"></p>
+            
+            <div class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">簽到時間</label>
+                        <input type="time" id="newIn" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">簽退時間</label>
+                        <input type="time" id="newOut" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">條補/修正備註</label>
+                    <input type="text" id="adjustNote" placeholder="例如：漏打卡補登、管理員修正" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button onclick="closeModal()" class="flex-1 px-4 py-3 bg-gray-100 text-gray-600 font-bold rounded-xl hover:bg-gray-200 transition">取消</button>
+                    <button onclick="submitAdjustment()" id="saveBtn" class="flex-1 px-4 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition shadow-lg">確認儲存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentRecord = null;
+
+        async function fetchAnomalies() {
+            const loading = document.getElementById('loading');
+            const noData = document.getElementById('noData');
+            const table = document.getElementById('tableContainer');
+            const tbody = document.getElementById('anomalyTbody');
+
+            loading.classList.remove('hidden');
+            noData.classList.add('hidden');
+            table.classList.add('hidden');
+
+            try {
+                const res = await fetch('/api/admin/attendance_anomalies');
+                const result = await res.json();
+
+                loading.classList.add('hidden');
+                if (result.success && result.data.length > 0) {
+                    table.classList.remove('hidden');
+                    tbody.innerHTML = '';
+                    result.data.forEach(r => {
+                        const tr = document.createElement('tr');
+                        tr.className = "anomaly-row transition-colors";
+                        
+                        // 判定狀態標籤
+                        let inTag = '';
+                        if (r.check_in > '08:40') {
+                            inTag = `<span class="ml-2 px-2 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">遲到</span>`;
+                        }
+                        
+                        let outTag = '';
+                        if (r.check_out === '未簽退') {
+                            outTag = `<span class="ml-2 px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-[10px] font-bold">缺紀錄</span>`;
+                        } else if (r.check_out < '17:00') {
+                            outTag = `<span class="ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-[10px] font-bold">早退</span>`;
+                        }
+
+                        tr.innerHTML = `
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-bold text-gray-900">${r.date}</div>
+                                <div class="text-xs text-indigo-600 font-medium">${r.name}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm text-gray-700">${r.room}</div>
+                                <div class="text-[10px] text-gray-400">登錄：${r.teacher}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-mono font-medium">${r.check_in}${inTag}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-sm font-mono font-medium">${r.check_out}${outTag}</div>
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex flex-col gap-2">
+                                    <button onclick="openAdjustModal('${r.name}', '${r.date}', '${r.room}', '${r.check_in}', '${r.check_out}')" 
+                                            class="text-[11px] bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-bold py-1 px-3 rounded-lg transition">
+                                        🔧 修正時間
+                                    </button>
+                                    <button onclick="markAsLeave('${r.name}', '${r.date}', '${r.room}')"
+                                            class="text-[11px] bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold py-1 px-3 rounded-lg transition">
+                                        📅 該生已請假
+                                    </button>
+                                </div>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                } else {
+                    noData.classList.remove('hidden');
+                }
+            } catch (e) {
+                loading.innerHTML = `<p class="text-red-500 font-bold">讀取失敗：${e.message}</p>`;
+            }
+        }
+
+        function openAdjustModal(name, date, room, c_in, c_out) {
+            currentRecord = { name, date, room };
+            document.getElementById('targetInfo').innerText = `${date} - ${name} (${room})`;
+            document.getElementById('newIn').value = c_in !== '未簽退' ? c_in : '08:00';
+            document.getElementById('newOut').value = c_out !== '未簽退' ? c_out : '17:00';
+            document.getElementById('adjustNote').value = "管理員手動修正";
+            document.getElementById('adjustModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('adjustModal').style.display = 'none';
+        }
+
+        async function submitAdjustment() {
+            const btn = document.getElementById('saveBtn');
+            const data = {
+                student_name: currentRecord.name,
+                date: currentRecord.date,
+                room: currentRecord.room,
+                new_in: document.getElementById('newIn').value,
+                new_out: document.getElementById('newOut').value,
+                note: document.getElementById('adjustNote').value
+            };
+
+            btn.disabled = true;
+            btn.innerText = '儲存中...';
+
+            try {
+                const res = await fetch('/api/admin/adjust_attendance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert('修正成功！試算表已同步更新。');
+                    closeModal();
+                    fetchAnomalies();
+                } else {
+                    alert('失敗：' + result.error);
+                }
+            } catch (e) {
+                alert('網路錯誤：' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = '確認儲存';
+            }
+        }
+
+        async function markAsLeave(name, date, room) {
+            if (!confirm(`確定要將學員 [${name}] 在 ${date} 的紀錄標註為「已請假」嗎？`)) return;
+
+            try {
+                const res = await fetch('/api/admin/adjust_attendance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        student_name: name,
+                        date: date,
+                        room: room,
+                        note: "該生已請假"
+                    })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert('已成功標記請假！');
+                    fetchAnomalies();
+                } else {
+                    alert('失敗：' + result.error);
+                }
+            } catch (e) {
+                alert('網路錯誤：' + e.message);
+            }
+        }
+
+        // Initial Load
+        window.onload = fetchAnomalies;
+    </script>
+</body>
+</html>

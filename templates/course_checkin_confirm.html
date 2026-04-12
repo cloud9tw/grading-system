@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課程簽到確認</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col min-h-screen">
+
+    <main class="flex-1 flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+            <div class="p-8 text-center">
+                <div class="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                </div>
+                
+                <h1 class="text-2xl font-bold text-gray-900 mb-2">確認簽到</h1>
+                <p class="text-gray-500 mb-8">您即將簽到以下課程：</p>
+                
+                <div class="bg-blue-50 py-6 px-4 rounded-2xl mb-8 border border-blue-100">
+                    <h2 id="courseName" class="text-xl font-extrabold text-blue-900 leading-tight">{{ course_name }}</h2>
+                    <p class="text-blue-600 text-sm mt-2 font-medium">學員：{{ user.name }} ({{ user.id }})</p>
+                </div>
+
+                <div id="statusArea" class="hidden mb-8 p-4 rounded-xl text-sm font-semibold">
+                    <!-- Status dynamic content here -->
+                </div>
+
+                <div id="actionArea">
+                    <button onclick="submitCheckin()" id="checkinBtn" class="w-full bg-indigo-600 py-4 rounded-2xl text-white font-bold text-lg hover:bg-indigo-700 transition shadow-lg flex items-center justify-center gap-2">
+                        <span>立即簽到</span>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                    </button>
+                    <p class="mt-4 text-xs text-gray-400">系統將自動驗證您的位置與當前時間</p>
+                </div>
+
+                <div id="successArea" class="hidden">
+                    <div class="mb-4 text-green-500 bg-green-50 p-4 rounded-xl font-bold">🎉 簽到成功！時數已累加。</div>
+                    <a href="/" class="inline-block text-indigo-600 font-bold hover:underline">返回我的儀表板</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="p-6 text-center text-gray-400 text-xs mt-auto">
+        &copy; 2026 學員評分與學習軌跡系統
+    </footer>
+
+    <script>
+        const courseName = "{{ course_name }}";
+
+        async function submitCheckin() {
+            const btn = document.getElementById('checkinBtn');
+            const statusArea = document.getElementById('statusArea');
+            const actionArea = document.getElementById('actionArea');
+            const successArea = document.getElementById('successArea');
+
+            btn.disabled = true;
+            btn.innerHTML = '簽到處理中...';
+            
+            try {
+                const res = await fetch('/api/course_checkin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        course_name: courseName,
+                        is_manual: false
+                    })
+                });
+                const result = await res.json();
+
+                if (result.success) {
+                    actionArea.classList.add('hidden');
+                    successArea.classList.remove('hidden');
+                } else {
+                    statusArea.classList.remove('hidden');
+                    statusArea.className = "mb-8 p-4 rounded-xl text-sm font-semibold bg-red-50 text-red-700 border border-red-100";
+                    statusArea.innerText = `❌ ${result.error || '簽到失敗'}`;
+                    btn.disabled = false;
+                    btn.innerHTML = '再試一次';
+                }
+            } catch (e) {
+                statusArea.classList.remove('hidden');
+                statusArea.className = "mb-8 p-4 rounded-xl text-sm font-semibold bg-gray-50 text-gray-600";
+                statusArea.innerText = `⚠️ 網路連線錯誤: ${e.message}`;
+                btn.disabled = false;
+                btn.innerHTML = '重試';
+            }
+        }
+    </script>
+</body>
+</html>

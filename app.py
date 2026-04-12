@@ -156,6 +156,45 @@ def send_attendance_alert_email(student_name, teacher_name, sub_room, action, ti
     except Exception as e:
         print(f"發送出勤警報失敗: {e}")
 
+def send_feedback_anomaly_email(admin_emails, data, triggers):
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_password = os.getenv("SENDER_PASSWORD")
+    
+    if not sender_email or not sender_password or not admin_emails:
+        print("未設定 Email 環境變數或無管理員名單，跳過回饋警報機制。")
+        return
+        
+    student_name = data.get('student_name', 'Unknown')
+    teacher_name = data.get('teacher', 'Unknown')
+    station = data.get('station', 'Unknown')
+    suggestion = data.get('suggestion', '(無文字建議)')
+    
+    msg = EmailMessage()
+    subject = f"🔴 [教學品質警報] {teacher_name} 的臨床教學收到負面回饋"
+    
+    trigger_text = ", ".join(triggers)
+    body = f"【教學品質警報系統】\n\n系統偵測到以下臨床教學回饋符合負面預警標準，請相關人員儘速查證：\n\n"
+    body += f"● 觸發原因：{trigger_text}\n"
+    body += f"● 學員姓名：{student_name}\n"
+    body += f"● 受評教師：{teacher_name}\n"
+    body += f"● 實習站別：{station}\n\n"
+    body += f"【學員之整體建議】：\n{suggestion}\n\n"
+    body += f"※ 詳細各項評分請至 Google Sheets 查詢：https://docs.google.com/spreadsheets/d/112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w/edit\n\n"
+    body += f"※ 此為系統自動發送之警示，請勿回覆。"
+    
+    msg.set_content(body)
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = ", ".join(admin_emails)
+    
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(sender_email, sender_password)
+            smtp.send_message(msg)
+            print(f"✅ 教學品質警報已成功發送給管理員群組。")
+    except Exception as e:
+        print(f"❌ 發送教學品質警警報失敗: {e}")
+
 @app.route('/login')
 def login():
     redirect_uri = url_for('authorize', _external=True)
@@ -182,11 +221,16 @@ def authorize():
             # Check Teacher
             sheet_teachers = doc.worksheet('教師名單')
             teachers_records = safe_get_all_records(sheet_teachers)
+            is_admin = False
             for t in teachers_records:
                 t_email = str(t.get('教師_Email', '')).strip().lower()
                 if t_email == user_email:
                     roles.append('teacher')
+                    # Detect Admin Privilege
+                    if str(t.get('管理員權限', '')).strip().lower() == 'admin':
+                        is_admin = True
                     break
+            session['is_admin'] = is_admin
                     
             # Check Student
             sheet_students = doc.worksheet('學員名單')
@@ -353,13 +397,75 @@ def submit_feedback():
             '',
             # AH: 對教師的整體建議
             data.get('suggestion', ''),
-            # AI: 未登錄教師姓名 (重複 F 欄)
-            data.get('other_teacher', '')
+            # AI: 醫院(公式，留空)
+            ''
         ]
-        # 找到最後一行有資料的位置，再往下一行寫入
-        all_values = sheet.get_all_values()
-        next_row = len(all_values) + 1  # 從第 1 行算起，下一個空行
-        sheet.update(f'A{next_row}', [row])
+        sheet.append_row(row, table_range="A1")
+
+        # --- 智慧預警檢測 (新功能) ---
+        def process_feedback_alert(feedback_data):
+            try:
+                gc_alert = get_gspread_client()
+                sheet_main_id = os.getenv("GOOGLE_SHEET_ID")
+                doc_alert = gc_alert.open_by_key(sheet_main_id)
+                
+                # 1. 獲取所有管理員 Email
+                sheet_teachers = doc_alert.worksheet('教師名單')
+                teacher_recs = safe_get_all_records(sheet_teachers)
+                admin_emails = []
+                for tr in teacher_recs:
+                    # 檢查 E 欄 (管理員權限) 是否標註為 Admin
+                    if str(tr.get('管理員權限', '')).strip().lower() == 'admin':
+                        email = str(tr.get('教師_Email', '')).strip().lower()
+                        if email and '@' in email:
+                            admin_emails.append(email)
+                
+                # 2. 獲取自定義負面關鍵字
+                try:
+                    sheet_settings = doc_alert.worksheet('系統設定')
+                    kw_recs = sheet_settings.col_values(1) # 負面關鍵字在第一欄
+                    custom_keywords = [str(k).strip() for k in kw_recs[1:] if str(k).strip()]
+                except:
+                    custom_keywords = []
+                
+                # 3. 執行檢修邏輯
+                alert_triggers = []
+                all_scores = []
+                
+                # 遍歷所有量化組別查低分 (q1, q2...)
+                for group in ['ability', 'teaching', 'holistic', 'knowledge', 'skills']:
+                    g_data = feedback_data.get(group, {})
+                    for q, val in g_data.items():
+                        try:
+                            v = int(val)
+                            all_scores.append(v)
+                            if v < 4:
+                                alert_triggers.append(f"單項低分({v}分)")
+                        except: pass
+                
+                # 整體平均檢查
+                if all_scores:
+                    avg = sum(all_scores) / len(all_scores)
+                    if avg < 4.0:
+                        alert_triggers.append(f"整體平均未達優(不足4分)")
+                
+                # 關鍵字智慧判定 (針對對教師建議)
+                suggestion_text = str(feedback_data.get('suggestion', ''))
+                if suggestion_text:
+                    for kw in custom_keywords:
+                        if kw in suggestion_text:
+                            alert_triggers.append(f"命中負面詞: {kw}")
+                            break
+                
+                # 如果符合任一預警條件且有名單，則寄信
+                if alert_triggers and admin_emails:
+                    send_feedback_anomaly_email(list(set(admin_emails)), feedback_data, list(set(alert_triggers)))
+                    
+            except Exception as ex:
+                print(f"智慧預警背景處理異常: {ex}")
+
+        # 啟動背景執行緒處理，不影響 API 回傳速度
+        threading.Thread(target=process_feedback_alert, args=(data,)).start()
         
         # BQ Double-Write
         try:
@@ -956,7 +1062,30 @@ def get_student_stats():
                     'opa3': to_int(r.opa3_sum)
                 })
             logging.info(f"API: Found {row_count} rows for student_id: [{target_id}] in project: [{project_id}]")
-            return jsonify({'success': True, 'data': records_by_station, 'count': row_count})
+            
+            # Step 2: Fetch Course Check-in Hours
+            course_hours = 0.0
+            try:
+                q_course = f"""
+                    SELECT SUM(hours) as total 
+                    FROM `{project_id}.grading_data.course_checkins` 
+                    WHERE CAST(student_id AS STRING) = @sid
+                """
+                job_config_c = bigquery.QueryJobConfig(
+                    query_parameters=[bigquery.ScalarQueryParameter("sid", "STRING", target_id)]
+                )
+                res_c = bq_client.query(q_course, job_config=job_config_c).result()
+                for r_c in res_c:
+                    course_hours = float(r_c.total or 0.0)
+            except Exception as e:
+                logging.error(f"Error fetching course hours: {e}")
+
+            return jsonify({
+                'success': True, 
+                'data': records_by_station, 
+                'count': row_count,
+                'course_hours': course_hours
+            })
         else:
             logging.error("API: BigQuery client could not be initialized (likely missing credentials.json)")
             return jsonify({'success': False, 'error': 'BigQuery client missing'}), 500
@@ -1054,23 +1183,279 @@ def get_student_attendance():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/diag/student/<sid>')
-def diag_student(sid):
-    # Mock login as student ID sid for debugging
-    logging.info(f'DIAG: Mocking login for student ID: {sid}')
-    session['user'] = {
-        'name': 'Debug User',
-        'email': 'debug@example.com',
-        'picture': 'https://ui-avatars.com/api/?name=Debug'
-    }
-    session['current_role'] = 'student'
-    session['student_info'] = {
-        'id': sid.strip(),
-        'name': 'Debug Student',
-        'type': '學員類別', # Force match for testing
-        'gender': '男'
-    }
-    return redirect(url_for('index'))
+# --- 管理員門戶與功能 ---
+
+@app.route('/admin')
+def admin_portal():
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return render_template('error.html', message='權限不足：此頁面僅限系統管理員進入。'), 403
+    
+    # 傳遞 Sheets ID 供前端產生連結
+    sheet_main = os.getenv("GOOGLE_SHEET_ID")
+    sheet_feedback = "112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w"
+    
+    return render_template('admin_portal.html', 
+                           user=user, 
+                           roles=session.get('roles', []),
+                           sheet_main=sheet_main,
+                           sheet_feedback=sheet_feedback)
+
+@app.route('/admin/attendance_monitor')
+def admin_attendance_monitor():
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return render_template('error.html', message='權限不足：此頁面僅限系統管理員進入。'), 403
+    return render_template('admin_attendance_monitor.html', user=user, roles=session.get('roles', []))
+
+@app.route('/admin/course_qrcodes')
+def admin_course_qrcodes():
+    user = session.get('user')
+    # 改為嚴格管理員檢查
+    if not user or not session.get('is_admin'):
+        return render_template('error.html', message='權限不足：課程條碼產生器僅限管理員存取。'), 403
+    
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        ws = doc.worksheet('早8課程簽到(含放腫、全人教學)')
+        courses = safe_get_all_records(ws)
+        return render_template('course_qrcodes.html', courses=courses, roles=session.get('roles', []))
+    except Exception as e:
+        return f"Error loading courses: {e}", 500
+
+@app.route('/course_checkin')
+def course_checkin_landing():
+    # 學員掃描 QR 後進入此頁面進行登入/確認
+    user = session.get('user')
+    if not user:
+        session['next_url'] = request.url
+        return redirect('/login')
+    
+    course_name = request.args.get('course')
+    return render_template('course_checkin_confirm.html', course_name=course_name, user=user)
+
+@app.route('/api/course_checkin', methods=['POST'])
+def api_course_checkin():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        
+    student_info = session.get('student_info', {})
+    data = request.json
+    course_name = data.get('course_name')
+    is_manual = data.get('is_manual', False)
+    
+    if not course_name:
+        return jsonify({'success': False, 'error': 'Missing course name'}), 400
+
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        ws = doc.worksheet('早8課程簽到(含放腫、全人教學)')
+        course_data = safe_get_all_records(ws)
+        
+        target_course = None
+        for c in course_data:
+            if c.get('課程名稱') == course_name:
+                target_course = c
+                break
+        
+        if not target_course:
+            return jsonify({'success': False, 'error': '找不到該課程資訊'}), 404
+
+        # 1. 時間驗證 (管理員補登或特定模式可跳過)
+        if not is_manual:
+            try:
+                import datetime
+                # 假設試算表格式: 上課日期 (YYYY/MM/DD), 開始時間 (HH:MM)
+                date_str = str(target_course.get('上課日期', '')).strip()
+                time_str = str(target_course.get('開始時間', '')).strip()
+                # 靈活處理分隔符號
+                date_str = date_str.replace('-', '/')
+                start_dt = datetime.datetime.strptime(f"{date_str} {time_str}", "%Y/%m/%d %H:%M")
+                
+                # 台灣時間 (UTC+8)
+                now = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
+                
+                # 限制：前 15 分 ~ 後 5 分
+                early_boundary = start_dt - datetime.timedelta(minutes=15)
+                late_boundary = start_dt + datetime.timedelta(minutes=5)
+                
+                if now < early_boundary:
+                    return jsonify({'success': False, 'error': f'簽到尚未開始。請於 {early_boundary.strftime("%H:%M")} 後再試。'}), 403
+                if now > late_boundary:
+                    return jsonify({'success': False, 'error': '簽到已逾時結束。請洽管理員補登。'}), 403
+            except Exception as e:
+                import logging
+                logging.error(f"Time validation error for course {course_name}: {e}")
+                return jsonify({'success': False, 'error': '系統無法驗證課程時間 (需檢查日期/時間格式)，請聯繫老師手動補登。'}), 500
+
+        # 2. 檢查重複簽到
+        bq_client, project_id = get_bq_client()
+        student_id = str(student_info.get('id', '')).split('.')[0].strip()
+        if not student_id:
+            return jsonify({'success': False, 'error': '無法辨識學員 ID，請重新登入。'}), 400
+        
+        q_dup = f"SELECT count(*) as cnt FROM `{project_id}.grading_data.course_checkins` WHERE CAST(student_id AS STRING) = @sid AND course_name = @cname"
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("sid", "STRING", student_id),
+                bigquery.ScalarQueryParameter("cname", "STRING", course_name)
+            ]
+        )
+        res_dup = bq_client.query(q_dup, job_config=job_config).result()
+        for r in res_dup:
+            if r.cnt > 0:
+                return jsonify({'success': False, 'error': '您已完成此課程簽到，請勿重複掃描。'}), 400
+
+        # 3. 執行簽到
+        try:
+            hours = float(target_course.get('時數', 0))
+        except:
+            hours = 0.0
+            
+        now_iso = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).isoformat()
+        
+        row_c = [{
+            'student_id': student_id,
+            'student_name': student_info.get('name', 'Unknown'),
+            'course_name': course_name,
+            'hours': hours,
+            'is_manual': is_manual,
+            'timestamp': now_iso
+        }]
+        errors = bq_client.insert_rows_json(f"{project_id}.grading_data.course_checkins", row_c)
+        if errors:
+            return jsonify({'success': False, 'error': f'BQ 寫入失敗: {str(errors)}'}), 500
+            
+        return jsonify({'success': True, 'msg': f'簽到成功！獲得 {hours} 小時時數。'})
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/manual_checkin', methods=['POST'])
+def api_admin_manual_checkin():
+    user = session.get('user')
+    if not user or 'teacher' not in session.get('roles', []):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    
+    data = request.json
+    target_sid = str(data.get('student_id', '')).split('.')[0].strip()
+    target_name = data.get('student_name', '')
+    course_name = data.get('course_name', '')
+    hours = float(data.get('hours', 0))
+    
+    bq_client, project_id = get_bq_client()
+    now_iso = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).isoformat()
+    
+    row_c = [{
+        'student_id': target_sid,
+        'student_name': target_name,
+        'course_name': course_name,
+        'hours': hours,
+        'is_manual': True,
+        'timestamp': now_iso
+    }]
+    errors = bq_client.insert_rows_json(f"{project_id}.grading_data.course_checkins", row_c)
+    if errors:
+        return jsonify({'success': False, 'error': str(errors)}), 500
+    return jsonify({'success': True})
+
+@app.route('/api/admin/attendance_anomalies')
+def api_admin_attendance_anomalies():
+    if not session.get('is_admin'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    
+    try:
+        bq_client, project_id = get_bq_client()
+        # 查詢遲到 (>08:40), 早退 (<17:00), 或未簽退的紀錄
+        query = f"""
+            SELECT
+              student_name,
+              teacher_name,
+              sub_room,
+              event_date,
+              FORMAT_TIMESTAMP('%H:%M', check_in_time, 'Asia/Taipei') as check_in,
+              FORMAT_TIMESTAMP('%H:%M', check_out_time, 'Asia/Taipei') as check_out,
+              check_in_time,
+              check_out_time
+            FROM `{project_id}.grading_data.attendance_daily_summary`
+            WHERE
+                EXTRACT(TIME FROM check_in_time AT TIME ZONE "Asia/Taipei") > TIME(8, 40, 0)
+                OR EXTRACT(TIME FROM check_out_time AT TIME ZONE "Asia/Taipei") < TIME(17, 0, 0)
+                OR check_out_time IS NULL
+            ORDER BY event_date DESC, check_in_time DESC
+            LIMIT 100
+        """
+        results = bq_client.query(query).result()
+        data = []
+        for r in results:
+            data.append({
+                'name': r.student_name,
+                'teacher': r.teacher_name,
+                'room': r.sub_room,
+                'date': str(r.event_date),
+                'check_in': r.check_in,
+                'check_out': r.check_out or '未簽退'
+            })
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/adjust_attendance', methods=['POST'])
+def api_admin_adjust_attendance():
+    if not session.get('is_admin'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    
+    data = request.json
+    s_name = data.get('student_name')
+    date_str = data.get('date') # YYYY-MM-DD
+    room = data.get('room')
+    new_in = data.get('new_in')
+    new_out = data.get('new_out')
+    note = data.get('note', '')
+    
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        ws = doc.worksheet('上下班打卡記錄')
+        all_rows = ws.get_all_values()
+        
+        # 尋找匹配行次 (日期、姓名、檢查室)
+        target_row_idx = -1
+        for i, row in enumerate(all_rows):
+            if i == 0: continue
+            # 檢查日期 (此處需依據試算表儲存格式靈活比對，通常為 YYYY-MM-DD)
+            row_date = row[4].split(' ')[0] if len(row) > 4 else '' # 簽到時間欄在第 5 欄 (index 4)
+            if row_date == date_str and row[0] == s_name and row[3] == room:
+                target_row_idx = i + 1
+                break
+        
+        if target_row_idx != -1:
+            # 更新試算表
+            if new_in: ws.update_cell(target_row_idx, 5, f"{date_str} {new_in}:00")
+            if new_out: ws.update_cell(target_row_idx, 6, f"{date_str} {new_out}:00")
+            if note: ws.update_cell(target_row_idx, 7, note) # 第 7 欄是備註
+            
+            # TODO: 同步更新 BQ (目前可依賴 sync 腳本或手動更新)
+            return jsonify({'success': True})
+        else:
+            # 若沒找到符合的打卡纪录（例如學員根本沒打卡），但管理員想直接補登請假
+            if note == "該生已請假":
+                ws.append_row([s_name, "Admin", "", room, date_str, date_str, note])
+                return jsonify({'success': True, 'msg': '已補登請假紀錄'})
+            
+            return jsonify({'success': False, 'error': '找不到對應的出勤紀錄'}), 404
+            
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     # run locally on port 5000
