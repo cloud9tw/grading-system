@@ -18,3 +18,8 @@ env/
 
 # macOS
 .DS_Store
+
+#logs
+*.log
+logs
+ node_modules

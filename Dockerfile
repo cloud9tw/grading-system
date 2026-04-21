@@ -7,12 +7,15 @@ WORKDIR /app
 # 將目前目錄下的檔案全部複製到容器內的 /app
 COPY . /app
 
-# 安裝相依套件與編譯工具 (避免 cryptography 或 bigquery 套件安裝失敗)
+# 安裝相依套件與編譯工具，並安裝 Playwright 瀏覽器及其所需的系統依賴
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libffi-dev \
     libssl-dev \
     && pip install --no-cache-dir -r requirements.txt \
+    # 安裝 Playwright 瀏覽器及系統套件 (針對 chromium)
+    && playwright install chromium \
+    && playwright install-deps chromium \
     && apt-get purge -y build-essential \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*

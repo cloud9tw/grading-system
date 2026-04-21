@@ -28,10 +28,15 @@
         </div>
 
         <!-- Progress Section -->
-        <div id="loading-section" class="flex flex-col items-center py-12">
+        <div id="loading-section" class="flex flex-col items-center py-6">
             <div class="spinner mb-6"></div>
-            <div id="status-text" class="text-lg font-medium text-blue-300 mb-2">啟動引擎中...</div>
-            <p class="text-slate-500 text-sm">這可能需要 2-3 分鐘，請勿關閉視窗</p>
+            <div id="status-text" class="text-lg font-medium text-blue-300 mb-2">正在建立同步連線...</div>
+            <p class="text-slate-500 text-sm mb-6">這可能需要數分鐘，請勿關閉視窗</p>
+            
+            <!-- Log Terminal Area -->
+            <div id="log-container" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-4 font-mono text-xs overflow-y-auto h-48 space-y-1 scroll-smooth">
+                <div class="text-slate-500">$ 初始化串流連線...</div>
+            </div>
         </div>
 
         <!-- Result Section (Hidden) -->
@@ -47,7 +52,7 @@
             </div>
 
             <div class="flex flex-col items-center">
-                <div id="countdown-text" class="text-slate-400 text-sm mb-4">將於 <span id="timer" class="font-bold text-white">3</span> 秒後自動返回管理頁面</div>
+                <div id="countdown-text" class="text-slate-400 text-sm mb-4">將於 <span id="timer" class="font-bold text-white">5</span> 秒後自動返回管理頁面</div>
                 <a href="/admin" class="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors">立即返回</a>
             </div>
         </div>
@@ -64,62 +69,103 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', async () => {
+        document.addEventListener('DOMContentLoaded', () => {
             const statusText = document.getElementById('status-text');
             const loadingSec = document.getElementById('loading-section');
             const resultSec = document.getElementById('result-section');
             const errorSec = document.getElementById('error-section');
             const taskList = document.getElementById('task-list');
+            const logContainer = document.getElementById('log-container');
 
-            try {
-                // Trigger actual sync via POST
-                const response = await fetch('/api/sync_ceep', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                const result = await response.json();
-
-                if (result.success) {
-                    loadingSec.classList.add('hidden');
-                    resultSec.classList.remove('hidden');
-
-                    // Populate summary
-                    if (result.summary && result.summary.length > 0) {
-                        result.summary.forEach(task => {
-                            const item = document.createElement('div');
-                            item.className = 'flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0 last:pb-0';
-                            item.innerHTML = `
-                                <div class="flex flex-col">
-                                    <span class="text-slate-300 font-medium">${task.form} - ${task.plan}</span>
-                                    <span class="text-xs text-slate-500">${task.year}</span>
-                                </div>
-                                <span class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs">+ ${task.count} 筆</span>
-                            `;
-                            taskList.appendChild(item);
-                        });
-                    }
-
-                    // Start countdown
-                    let timeLeft = 3;
-                    const timerEl = document.getElementById('timer');
-                    const interval = setInterval(() => {
-                        timeLeft--;
-                        timerEl.innerText = timeLeft;
-                        if (timeLeft <= 0) {
-                            clearInterval(interval);
-                            window.location.href = '/admin';
-                        }
-                    }, 1000);
-
-                } else {
-                    throw new Error(result.error || '未知錯誤');
-                }
-            } catch (err) {
-                loadingSec.classList.add('hidden');
-                errorSec.classList.remove('hidden');
-                document.getElementById('error-message').innerText = err.message;
+            // 輔助函式：在日誌視窗中新增一行訊息
+            function addLog(msg, type = 'blue') {
+                const div = document.createElement('div');
+                const colors = {
+                    blue: 'text-blue-400',    # 一般進度 (藍色)
+                    green: 'text-emerald-400', # 成功/完成 (綠色)
+                    red: 'text-red-400',      # 錯誤 (紅色)
+                    gray: 'text-slate-500'    # 系統資訊 (灰色)
+                };
+                div.className = `${colors[type] || colors.gray} break-words`;
+                div.innerText = (type === 'blue' || type === 'green' ? '> ' : '$ ') + msg;
+                logContainer.appendChild(div);
+                // 自動捲動到底部
+                logContainer.scrollTop = logContainer.scrollHeight;
             }
+
+            // [SSE 核心邏輯]
+            // 建立與伺服器端的 EventSource 持續性連線
+            const eventSource = new EventSource('/api/sync_ceep_stream');
+
+            // 監聽來自伺服器的自定義訊息事件
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    // 根據訊息類型執行不同動作
+                    if (data.type === 'log') {
+                        // 1. 一般日誌訊息：直接顯示在 Terminal 並更新主標題
+                        addLog(data.msg);
+                        statusText.innerText = data.msg;
+                    } 
+                    else if (data.type === 'summary') {
+                        // 2. 統計總結：抓取完成後產生的列表數據
+                        addLog('正在生成任務清單...', 'green');
+                        if (data.data && data.data.length > 0) {
+                            data.data.forEach(task => {
+                                const item = document.createElement('div');
+                                item.className = 'flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0 last:pb-0';
+                                item.innerHTML = `
+                                    <div class="flex flex-col">
+                                        <span class="text-slate-300 font-medium">${task.form} - ${task.plan}</span>
+                                        <span class="text-xs text-slate-500">${task.year}</span>
+                                    </div>
+                                    <span class="px-3 py-1 ${task.status === 'success' ? 'bg-blue-500/20 text-blue-400' : 'bg-red-500/20 text-red-400'} rounded-full text-xs">
+                                        ${task.status === 'success' ? '+ ' + task.count + ' 筆' : '失敗'}
+                                    </span>
+                                `;
+                                taskList.appendChild(item);
+                            });
+                        }
+                    }
+                    else if (data.type === 'done') {
+                        // 3. 完工信號：關閉連線並切換 UI 到結果畫面
+                        addLog(data.msg, 'green');
+                        eventSource.close();
+                        loadingSec.classList.add('hidden');
+                        resultSec.classList.remove('hidden');
+
+                        // 啟動自動跳轉倒數
+                        let timeLeft = 5;
+                        const timerEl = document.getElementById('timer');
+                        const interval = setInterval(() => {
+                            timeLeft--;
+                            timerEl.innerText = timeLeft;
+                            if (timeLeft <= 0) {
+                                clearInterval(interval);
+                                window.location.href = '/admin'; // 跳回管理門戶
+                            }
+                        }, 1000);
+                    }
+                    else if (data.type === 'error') {
+                        // 4. 錯誤訊息：擲出例外由 catch 處理
+                        throw new Error(data.msg);
+                    }
+                } catch (err) {
+                    addLog(err.message, 'red');
+                    eventSource.close();
+                    loadingSec.classList.add('hidden');
+                    errorSec.classList.remove('hidden');
+                    document.getElementById('error-message').innerText = err.message;
+                }
+            };
+
+            // 處理連線異常中斷
+            eventSource.onerror = (err) => {
+                console.error("SSE Connection Error:", err);
+                addLog("與伺服器連線中斷或發生錯誤，同步可能已終止。", "red");
+                eventSource.close();
+            };
         });
     </script>
 </body>

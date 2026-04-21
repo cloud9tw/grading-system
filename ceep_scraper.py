@@ -14,11 +14,16 @@ def clean_html(raw_html):
     cleantext = re.sub(cleanr, ' ', raw_html)
     return ' '.join(cleantext.split())
 
-async def scrape_ceep_all_forms():
+async def scrape_ceep_all_forms(callback=None):
     """
     Log in to CEEP2, and scrape DOPS and Mini-CEX forms across multiple plans (Interns, PGY, New Staff).
     Returns: (final_results, task_summary)
     """
+    async def report(msg):
+        print(msg)
+        if callback:
+            await callback(msg)
+
     import datetime
     now = datetime.datetime.now()
     if now.month >= 7:
@@ -43,15 +48,25 @@ async def scrape_ceep_all_forms():
     task_summary = [] # 用於回傳給前端顯示
 
     async with async_playwright() as p:
-        # Launch browser
-        browser = await p.chromium.launch(headless=True)
+        await report("--- 正在啟動瀏覽器核心 (Chromium) ---")
+        # Launch browser with Docker-friendly arguments
+        browser = await p.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage',
+                '--disable-gpu'
+            ]
+        )
         context = await browser.new_context(viewport={'width': 1280, 'height': 800})
         page = await context.new_page()
 
-        print("--- 正在連線至 CEEP 系統 ---")
+        await report("--- 正在連線至 CEEP 系統 ---")
         await page.goto("https://ceep2.tmu.edu.tw/")
 
         # Login
+        await report("--- 正在執行登入作業 ---")
         await page.fill('input[name="account"]', "15680")
         await page.fill('input[name="password"]', "4249")
         
@@ -59,14 +74,17 @@ async def scrape_ceep_all_forms():
             await page.click('button[type="submit"]')
         
         if "login" in page.url:
+            await report("❌ 登入失敗：帳號或密碼錯誤")
             raise Exception("登入失敗，請確認 ceep_scraper.py 中的帳號密碼。")
+        
+        await report("✅ 登入成功，開始抓取流程")
 
         for sheet_name, form_label in targets.items():
-            print(f"\n===== 開始抓取表單: {form_label} =====")
+            await report(f"➔ 準備抓取表單: {form_label}")
             all_records_for_form = []
 
             for year_label, plan_label in tasks:
-                print(f"--- 執行任務: [{year_label}] {plan_label} ---")
+                await report(f"   [任務] {year_label} | {plan_label}")
                 
                 # Navigate to Statistics directly
                 await page.goto("https://ceep2.tmu.edu.tw/admin/complex/assessment_form/assessment_form_statistics")
@@ -139,7 +157,7 @@ async def scrape_ceep_all_forms():
                         })
                         task_count += 1
                     
-                    print(f"   -> 成功抓取 {task_count} 筆紀錄")
+                    await report(f"      ✔ 抓取完畢，共 {task_count} 筆紀錄")
                     task_summary.append({
                         "form": "DOPS" if "DOPS" in sheet_name else "Mini-CEX",
                         "year": year_label,
@@ -149,7 +167,7 @@ async def scrape_ceep_all_forms():
                     })
 
                 except Exception as e:
-                    print(f"   ⚠️ 任務跳過或失敗: {plan_label} - {e}")
+                    await report(f"      ⚠ 任務失敗: {plan_label} - {e}")
                     task_summary.append({
                         "form": "DOPS" if "DOPS" in sheet_name else "Mini-CEX",
                         "year": year_label,
@@ -161,8 +179,9 @@ async def scrape_ceep_all_forms():
                     continue
 
             final_results[sheet_name] = all_records_for_form
-            print(f"✅ {sheet_name} 總計完工，全計畫累計 {len(all_records_for_form)} 筆紀錄")
+            await report(f"🎯 表單 {sheet_name} 已完成彙整")
 
+        await report("--- 同步流程結束，正在關閉瀏覽器 ---")
         await browser.close()
         return final_results, task_summary
 

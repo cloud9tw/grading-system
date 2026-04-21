@@ -4,7 +4,7 @@ import datetime
 import logging
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from flask import Flask, redirect, url_for, session, render_template, request, jsonify
+from flask import Flask, redirect, url_for, session, render_template, request, jsonify, Response
 from authlib.integrations.flask_client import OAuth
 import gspread
 from dotenv import load_dotenv
@@ -54,50 +54,81 @@ def safe_get_all_records(worksheet):
     return records
 
 def get_bq_client():
+    """
+    初始化 BigQuery 客戶端。
+    優先順序：1. 本地 credentials.json 2. 環境變數 JSON 字串 3. GCP 環境預設憑證
+    """
     try:
-        credentials = service_account.Credentials.from_service_account_file('credentials.json')
-        bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
-        return bq_client, credentials.project_id
-    except FileNotFoundError:
+        # [策略 1] 優先嘗試從本地檔案讀取 (適用於 Windows/本地開發環境)
+        if os.path.exists('credentials.json'):
+            credentials = service_account.Credentials.from_service_account_file('credentials.json')
+            bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+            return bq_client, credentials.project_id
+        
+        # [策略 2] 針對 Cloud Run 等無檔案環境，從環境變數讀取 JSON 字串內容
+        json_str = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_CREDENTIALS_JSON")
+        if json_str and json_str.strip().startswith('{'):
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.json') as f:
+                f.write(json_str)
+                temp_path = f.name
+            try:
+                # 某些 Google SDK 需要實體路徑，因此建立臨時檔案
+                credentials = service_account.Credentials.from_service_account_file(temp_path)
+                bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+                return bq_client, credentials.project_id
+            finally:
+                if os.path.exists(temp_path): os.remove(temp_path) # 用完即刪，確保安全
+
+        # [策略 3] 最後嘗試使用 GCP Application Default Credentials
         import google.auth
         credentials, project = google.auth.default()
         project = project or "epa-grading-system"
         bq_client = bigquery.Client(credentials=credentials, project=project)
         return bq_client, project
     except Exception as e:
-        print("Error initializing BQ Client:", e)
+        logging.error(f"❌ BigQuery 初始化失敗: {e}")
         return None, None
 
 def get_gspread_client():
+    """
+    初始化 Google Sheets 客戶端 (gspread)。
+    具備多重後援機制，確保在 Cloud Run 上即使檔案遺失也能正常運作。
+    """
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
-    # 1. 直接讀取環境變數中的 JSON 字串 (推薦在 GCP Cloud Run 等無伺服器環境使用)
+    # [策略 1] 優先從環境變數讀取 JSON 字串內容 (最適合雲端部署)
     json_str = os.getenv("GOOGLE_CREDENTIALS_JSON") or os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
     if json_str and json_str.strip().startswith('{'):
         try:
             creds_dict = json.loads(json_str)
             return gspread.service_account_from_dict(creds_dict, scopes=scope)
         except Exception as e:
-            print(f"Error loading credentials from JSON string: {e}")
-            raise Exception(f"GCP JSON credentials parse error: {str(e)}")
+            logging.error(f"❌ 從環境變數 JSON 解析憑證失敗: {e}")
             
-    # 2. 如果沒有環境變數 JSON，則嘗試讀取實體金鑰檔案
+    # [策略 2] 嘗試讀取多個可能的金鑰檔案路徑
     possible_paths = [
-        os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-        "/etc/secrets/credentials.json",   # Render default secret file path
-        "credentials.json"
+        os.getenv("GOOGLE_APPLICATION_CREDENTIALS"), # 系統環境變數指向的路徑
+        "/etc/secrets/credentials.json",              # Render 預設祕密檔案路徑
+        "credentials.json"                            # 本地根目錄檔案
     ]
     
-    errors = []
     for path in possible_paths:
         if path and os.path.exists(path):
             try:
                 return gspread.service_account(filename=path, scopes=scope)
             except Exception as e:
-                print(f"Error loading credentials from {path}: {e}")
-                errors.append(f"[{path}] {str(e)}")
+                logging.error(f"❌ 讀取憑證檔案 {path} 失敗: {e}")
                 
-    raise Exception("Google Sheets credentials not found. Tried paths: " + " | ".join(errors) if errors else "No valid credential file paths found.")
+    # [策略 3] 在 GCP 生態系內嘗試使用服務帳戶預設權限
+    try:
+        import google.auth
+        credentials, project = google.auth.default(scopes=scope)
+        return gspread.Client(auth=credentials)
+    except Exception as e:
+        logging.error(f"❌ GCP 預設憑證用於 gspread 失敗: {e}")
+                
+    raise Exception("無法初始化 Google Sheets 憑證。請確認 GOOGLE_SERVICE_ACCOUNT_JSON 或 credentials.json 設定正確。")
 
 @app.route('/')
 def index():
@@ -194,12 +225,45 @@ def send_feedback_anomaly_email(admin_emails, data, triggers):
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(sender_email, sender_password)
             smtp.send_message(msg)
-            print(f"✅ 教學品質警報已成功發送給管理員群組。")
+            msg_ok = f"✅ 教學品質警報已成功發送給管理員群組: {admin_emails}\n"
+            print(msg_ok)
+            with open('feedback_debug.log', 'a', encoding='utf-8') as f:
+                f.write(f"  {msg_ok}\n")
     except Exception as e:
-        print(f"❌ 發送教學品質警警報失敗: {e}")
+        msg_err = f"❌ 發送教學品質警報失敗: {e}\n"
+        print(msg_err)
+        with open('feedback_debug.log', 'a', encoding='utf-8') as f:
+            f.write(f"  {msg_err}\n")
 
 @app.route('/login')
 def login():
+    # ===== 測試模式：bypass OAuth =====
+    if os.getenv('TEST_MODE', '').lower() == 'true':
+        test_role = request.args.get('role', 'teacher')  # ?role=student 或 ?role=teacher
+        test_user = {
+            'name': '測試教師' if test_role == 'teacher' else '測試學員',
+            'email': 'test-teacher@test.com' if test_role == 'teacher' else 'test-student@test.com',
+            'picture': 'https://ui-avatars.com/api/?name=Test+User&background=random'
+        }
+        session['user'] = test_user
+        session['is_admin'] = (test_role == 'teacher')
+
+        if test_role == 'student':
+            session['roles'] = ['student']
+            session['current_role'] = 'student'
+            session['student_info'] = {
+                'id': 'TEST001',
+                'name': '測試學員',
+                'type': '住院醫師',
+                'gender': '男'
+            }
+        else:
+            session['roles'] = ['teacher']
+            session['current_role'] = 'teacher'
+
+        next_url = session.pop('next_url', '/')
+        return redirect(next_url)
+    # ===== 正常 OAuth 流程 =====
     redirect_uri = url_for('authorize', _external=True)
     return google.authorize_redirect(redirect_uri)
 
@@ -294,6 +358,12 @@ def logout():
 def attendance():
     user = session.get('user')
     if not user:
+        # 保存帶有 student_id 的完整 URL，讓登入後可以自動帶回
+        next_url = request.url
+        # 避免 next_url 包含 host，只保留 path+query
+        from urllib.parse import urlparse
+        parsed = urlparse(next_url)
+        session['next_url'] = parsed.path + ('?' + parsed.query if parsed.query else '')
         return redirect('/login')
     return render_template('attendance.html', user=user, roles=session.get('roles', []))
 
@@ -460,12 +530,26 @@ def submit_feedback():
                             alert_triggers.append(f"命中負面詞: {kw}")
                             break
                 
+                # 4. 記錄偵錯資訊
+                log_msg = f"[{timestamp}] 檢測開始: 學員={feedback_data.get('student_name')}, 教師={feedback_data.get('teacher')}\n"
+                log_msg += f"  - 管理員名單: {len(admin_emails)} 人\n"
+                log_msg += f"  - 自定義關鍵字: {len(custom_keywords)} 個\n"
+                log_msg += f"  - 觸發項目: {alert_triggers}\n"
+                
+                with open('feedback_debug.log', 'a', encoding='utf-8') as f:
+                    f.write(log_msg)
+                
                 # 如果符合任一預警條件且有名單，則寄信
                 if alert_triggers and admin_emails:
                     send_feedback_anomaly_email(list(set(admin_emails)), feedback_data, list(set(alert_triggers)))
+                    with open('feedback_debug.log', 'a', encoding='utf-8') as f:
+                        f.write(f"  ✅ 已嘗試發送信件至 {len(admin_emails)} 位管理員\n")
                     
             except Exception as ex:
-                print(f"智慧預警背景處理異常: {ex}")
+                err_msg = f"智慧預警背景處理異常: {ex}\n"
+                print(err_msg)
+                with open('feedback_debug.log', 'a', encoding='utf-8') as f:
+                    f.write(f"  ❌ 錯誤: {err_msg}\n")
 
         # 啟動背景執行緒處理，不影響 API 回傳速度
         threading.Thread(target=process_feedback_alert, args=(data,)).start()
@@ -804,24 +888,76 @@ def sync_ceep():
 
     if request.method == 'GET':
         return render_template('sync_status.html')
+    
+    # 舊的 POST 方式保留，但建議改用串流
+    return jsonify({'success': False, 'error': '請使用串流介面'})
 
-    # AJAX POST starts here
-    try:
-        print("--- 開始執行 CEEP 同步任務 ---")
+@app.route('/api/sync_ceep_stream')
+def sync_ceep_stream():
+    """
+    透過 Server-Sent Events (SSE) 串流傳輸同步進度，避免網頁「轉圈圈」等待而不知進度。
+    """
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return "Unauthorized", 403
+
+    def generate_simple():
+        import queue
+        import threading
         import asyncio
-        data, summary = asyncio.run(scrape_ceep_all_forms())
+        import json
         
-        for sheet_name, records in data.items():
-            archive_to_sheets(records, sheet_name=sheet_name)
+        # 使用同步隊列來銜接非同步的爬蟲進度與同步的 Flask Response
+        msg_queue = queue.Queue()
+
+        async def callback(msg):
+            # 爬蟲每完成一個步驟就會丟一個訊息進來
+            msg_queue.put(msg)
+
+        async def run_scraper():
+            try:
+                # 1. 第一階段：執行 Playwright 爬蟲抓取資料 (Async)
+                data, summary = await scrape_ceep_all_forms(callback=callback)
+                
+                # 2. 第二階段：將抓取到的結果存回多張 Google Sheets
+                msg_queue.put("--- 正在將數據同步至 Google Sheets ---")
+                for sheet_name, records in data.items():
+                    archive_to_sheets(records, sheet_name=sheet_name)
+                    msg_queue.put(f"✅ 已完成 {sheet_name} 同步")
+                
+                # 回傳抓取統計總結給前端渲染卡片
+                msg_queue.put({"type": "summary", "data": summary})
+                # 發送完工信號
+                msg_queue.put({"type": "done", "msg": "所有同步任務已完成！"})
+            except Exception as e:
+                import traceback
+                print(traceback.format_exc())
+                msg_queue.put({"type": "error", "msg": str(e)})
+            finally:
+                # 送出 None 代表結束串流
+                msg_queue.put(None)
+
+        def worker():
+            # 在獨立執行緒內建立 asyncio 事件迴圈執行爬蟲
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(run_scraper())
+
+        threading.Thread(target=worker).start()
+
+        # 生成器持續 yield 訊息直到結束
+        while True:
+            msg = msg_queue.get()
+            if msg is None:
+                break
             
-        print("--- CEEP 同步任務完成 ---")
-        return jsonify({
-            'success': True, 
-            'summary': summary
-        })
-    except Exception as e:
-        print(f"CEEP 同步發生錯誤: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+            # SSE 格式要求必須以 data: 開頭並以雙換行結束
+            if isinstance(msg, dict):
+                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'log', 'msg': msg}, ensure_ascii=False)}\n\n"
+
+    return Response(generate_simple(), mimetype='text/event-stream')
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
