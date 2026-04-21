@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CEEP 數據同步中心</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/font-awesome.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+        body { font-family: 'Outfit', sans-serif; background: #0f172a; color: #f8fafc; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        .spinner { border: 4px solid rgba(255, 255, 255, 0.1); border-left-color: #38bdf8; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fade-in { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass max-w-2xl w-full rounded-2xl p-8 shadow-2xl relative overflow-hidden">
+        <!-- Decoration -->
+        <div class="absolute -top-24 -right-24 w-48 height-48 bg-blue-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-24 -left-24 w-48 height-48 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400 mb-2">CEEP 自動化同步</h1>
+            <p class="text-slate-400">正在與台北醫學大學 CEEP 系統連動中...</p>
+        </div>
+
+        <!-- Progress Section -->
+        <div id="loading-section" class="flex flex-col items-center py-12">
+            <div class="spinner mb-6"></div>
+            <div id="status-text" class="text-lg font-medium text-blue-300 mb-2">啟動引擎中...</div>
+            <p class="text-slate-500 text-sm">這可能需要 2-3 分鐘，請勿關閉視窗</p>
+        </div>
+
+        <!-- Result Section (Hidden) -->
+        <div id="result-section" class="hidden fade-in">
+            <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-6 mb-6">
+                <div class="flex items-center text-emerald-400 font-semibold mb-4">
+                    <i class="fas fa-check-circle mr-2"></i> 同步任務已圓滿完成！
+                </div>
+                
+                <div class="space-y-3" id="task-list">
+                    <!-- Tasks will be injected here -->
+                </div>
+            </div>
+
+            <div class="flex flex-col items-center">
+                <div id="countdown-text" class="text-slate-400 text-sm mb-4">將於 <span id="timer" class="font-bold text-white">3</span> 秒後自動返回管理頁面</div>
+                <a href="/admin" class="px-6 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors">立即返回</a>
+            </div>
+        </div>
+
+        <!-- Error Section (Hidden) -->
+        <div id="error-section" class="hidden fade-in">
+            <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-6 mb-6 text-center">
+                <i class="fas fa-exclamation-triangle text-red-500 text-4xl mb-4"></i>
+                <h3 class="text-xl font-bold text-red-400 mb-2">同步發生錯誤</h3>
+                <p id="error-message" class="text-slate-400 text-sm mb-4"></p>
+                <a href="/admin" class="inline-block px-8 py-3 bg-red-500 hover:bg-red-600 rounded-xl font-bold transition-all">返回管理中心</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const statusText = document.getElementById('status-text');
+            const loadingSec = document.getElementById('loading-section');
+            const resultSec = document.getElementById('result-section');
+            const errorSec = document.getElementById('error-section');
+            const taskList = document.getElementById('task-list');
+
+            try {
+                // Trigger actual sync via POST
+                const response = await fetch('/api/sync_ceep', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const result = await response.json();
+
+                if (result.success) {
+                    loadingSec.classList.add('hidden');
+                    resultSec.classList.remove('hidden');
+
+                    // Populate summary
+                    if (result.summary && result.summary.length > 0) {
+                        result.summary.forEach(task => {
+                            const item = document.createElement('div');
+                            item.className = 'flex justify-between items-center text-sm border-b border-white/5 pb-2 last:border-0 last:pb-0';
+                            item.innerHTML = `
+                                <div class="flex flex-col">
+                                    <span class="text-slate-300 font-medium">${task.form} - ${task.plan}</span>
+                                    <span class="text-xs text-slate-500">${task.year}</span>
+                                </div>
+                                <span class="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-xs">+ ${task.count} 筆</span>
+                            `;
+                            taskList.appendChild(item);
+                        });
+                    }
+
+                    // Start countdown
+                    let timeLeft = 3;
+                    const timerEl = document.getElementById('timer');
+                    const interval = setInterval(() => {
+                        timeLeft--;
+                        timerEl.innerText = timeLeft;
+                        if (timeLeft <= 0) {
+                            clearInterval(interval);
+                            window.location.href = '/admin';
+                        }
+                    }, 1000);
+
+                } else {
+                    throw new Error(result.error || '未知錯誤');
+                }
+            } catch (err) {
+                loadingSec.classList.add('hidden');
+                errorSec.classList.remove('hidden');
+                document.getElementById('error-message').innerText = err.message;
+            }
+        });
+    </script>
+</body>
+</html>
