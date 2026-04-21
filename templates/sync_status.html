@@ -81,10 +81,10 @@
             function addLog(msg, type = 'blue') {
                 const div = document.createElement('div');
                 const colors = {
-                    blue: 'text-blue-400',    # 一般進度 (藍色)
-                    green: 'text-emerald-400', # 成功/完成 (綠色)
-                    red: 'text-red-400',      # 錯誤 (紅色)
-                    gray: 'text-slate-500'    # 系統資訊 (灰色)
+                    blue: 'text-blue-400',    // 一般進度 (藍色)
+                    green: 'text-emerald-400', // 成功/完成 (綠色)
+                    red: 'text-red-400',      // 錯誤 (紅色)
+                    gray: 'text-slate-500'    // 系統資訊 (灰色)
                 };
                 div.className = `${colors[type] || colors.gray} break-words`;
                 div.innerText = (type === 'blue' || type === 'green' ? '> ' : '$ ') + msg;
