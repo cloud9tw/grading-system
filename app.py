@@ -820,7 +820,7 @@ def sync_ceep():
 @app.route('/api/sync_ceep_stream')
 def sync_ceep_stream():
     """
-    透過 Server-Sent Events (SSE) 串流傳輸同步進度，避免網頁「轉圈圈」等待而不知進度。
+    透過 Server-Sent Events (SSE) 串流傳輸同步進度。
     """
     user = session.get('user')
     if not user or not session.get('is_admin'):
@@ -832,57 +832,71 @@ def sync_ceep_stream():
         import asyncio
         import json
         
-        # 使用同步隊列來銜接非同步的爬蟲進度與同步的 Flask Response
+        # 建立一個同步隊列
         msg_queue = queue.Queue()
 
+        # 立即發送一個啟始訊息，確保串流通道已建立
+        msg_queue.put("串流通道已建立，正在啟動背景同步執行緒...")
+
         async def callback(msg):
-            # 爬蟲每完成一個步驟就會丟一個訊息進來
             msg_queue.put(msg)
 
         async def run_scraper():
             try:
-                # 1. 第一階段：執行 Playwright 爬蟲抓取資料 (Async)
+                # 1. 第一階段：執行 Playwright 爬蟲
+                msg_queue.put("正在進入非同步爬蟲核心...")
                 data, summary = await scrape_ceep_all_forms(callback=callback)
                 
-                # 2. 第二階段：將抓取到的結果存回多張 Google Sheets
+                # 2. 第二階段：將結果存回 Sheets
                 msg_queue.put("--- 正在將數據同步至 Google Sheets ---")
                 for sheet_name, records in data.items():
                     archive_to_sheets(records, sheet_name=sheet_name)
                     msg_queue.put(f"✅ 已完成 {sheet_name} 同步")
                 
-                # 回傳抓取統計總結給前端渲染卡片
                 msg_queue.put({"type": "summary", "data": summary})
-                # 發送完工信號
                 msg_queue.put({"type": "done", "msg": "所有同步任務已完成！"})
             except Exception as e:
                 import traceback
-                print(traceback.format_exc())
-                msg_queue.put({"type": "error", "msg": str(e)})
+                error_trace = traceback.format_exc()
+                logging.error(f"Sync error traceback: {error_trace}")
+                msg_queue.put({"type": "error", "msg": f"伺服器出錯: {str(e)}"})
             finally:
-                # 送出 None 代表結束串流
                 msg_queue.put(None)
 
         def worker():
-            # 在獨立執行緒內建立 asyncio 事件迴圈執行爬蟲
+            logging.info("Starting sync worker thread...")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(run_scraper())
+            try:
+                loop.run_until_complete(run_scraper())
+            finally:
+                loop.close()
 
-        threading.Thread(target=worker).start()
+        # 啟動背景執行緒
+        t = threading.Thread(target=worker)
+        t.daemon = True
+        t.start()
 
-        # 生成器持續 yield 訊息直到結束
+        # 持續讀取隊列直到收到 None
         while True:
-            msg = msg_queue.get()
-            if msg is None:
-                break
-            
-            # SSE 格式要求必須以 data: 開頭並以雙換行結束
-            if isinstance(msg, dict):
-                yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'log', 'msg': msg}, ensure_ascii=False)}\n\n"
+            try:
+                msg = msg_queue.get(timeout=120) # 設定超時避免無限阻塞
+                if msg is None:
+                    break
+                
+                if isinstance(msg, dict):
+                    yield f"data: {json.dumps(msg, ensure_ascii=False)}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'log', 'msg': msg}, ensure_ascii=False)}\n\n"
+            except queue.Empty:
+                yield f"data: {json.dumps({'type': 'log', 'msg': '... 等待伺服器回應中 ...'}, ensure_ascii=False)}\n\n"
 
-    return Response(generate_simple(), mimetype='text/event-stream')
+    response = Response(generate_simple(), mimetype='text/event-stream')
+    # 關閉快取與緩衝，確保 SSE 即時性
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Connection'] = 'keep-alive'
+    return response
 
 @app.route('/api/config', methods=['GET'])
 def get_config():
