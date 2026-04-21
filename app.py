@@ -8,6 +8,9 @@ from flask import Flask, redirect, url_for, session, render_template, request, j
 from authlib.integrations.flask_client import OAuth
 import gspread
 from dotenv import load_dotenv
+import threading
+from ceep_scraper import scrape_ceep_all_forms
+from ceep_archiver import archive_to_sheets
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -726,14 +729,20 @@ def check_absent():
         if now_dt.weekday() >= 5: # 週末不寄信
             return jsonify({'success': True, 'msg': 'Today is weekend, skip absent check.'})
             
-        gc = get_gspread_client()
-        if not gc:
-            return jsonify({'success': False, 'error': 'No gspread client'})
-            
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         
-        # 取得所有學員
+        # 1. 檢查排除日期 (系統選定排除日期，例如國定假日)
+        try:
+            sheet_settings = doc.worksheet('系統設定')
+            # 排除日期在第二欄 (B欄)
+            excluded_dates = sheet_settings.col_values(2)[1:] # 跳過標題
+            if today_str in [str(d).strip() for d in excluded_dates if d]:
+                return jsonify({'success': True, 'msg': f'Today ({today_str}) is an excluded date, skip absent check.'})
+        except Exception as e:
+            print(f"Read excluded dates error: {e}")
+
+        # 2. 取得所有學員
         sheet_students = doc.worksheet('學員名單')
         students_records = safe_get_all_records(sheet_students)
         all_students = [str(rec.get('姓名', '')).strip() for rec in students_records if str(rec.get('姓名', '')).strip()]
@@ -784,6 +793,65 @@ def check_absent():
         return jsonify({'success': True, 'absent_count': len(absent_students), 'absent_students': absent_students})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/sync_ceep', methods=['GET', 'POST'])
+def sync_ceep():
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': '僅限管理員執行'}), 403
+
+    def run_sync():
+        try:
+            print("--- 開始執行 CEEP 同步任務 ---")
+            import asyncio
+            all_data = asyncio.run(scrape_ceep_all_forms())
+            for sheet_name, records in all_data.items():
+                archive_to_sheets(records, sheet_name=sheet_name)
+            print("--- CEEP 同步任務完成 ---")
+        except Exception as e:
+            print(f"CEEP 同步發生錯誤: {e}")
+
+    threading.Thread(target=run_sync).start()
+    
+    if request.method == 'GET':
+        from flask import render_template_string
+        html_page = """
+        <!DOCTYPE html>
+        <html lang="zh-TW">
+        <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="refresh" content="10;url=/admin">
+            <title>同步已啟動</title>
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+                body { font-family: 'Inter', sans-serif; }
+            </style>
+        </head>
+        <body class="bg-gray-50 h-screen flex flex-col items-center justify-center">
+            <div class="bg-white p-10 rounded-3xl shadow-lg border border-gray-100 text-center max-w-md w-11/12">
+                <div class="w-20 h-20 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-10 h-10 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900 mb-4">後台已開始抓取資料中...</h1>
+                <p class="text-gray-500 mb-6 leading-relaxed">爬蟲程式正連線至 CEEP2 下載本學年度 DOPS 分數，此作業約需數分鐘。完成後資料將自動寫入雲端資料庫。</p>
+                <div class="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm font-semibold tracking-wide">
+                    將於 <span id="countdown" class="text-blue-600">10</span> 秒後回到上一頁...
+                </div>
+            </div>
+            <script>
+                let sec = 10;
+                setInterval(() => {
+                    sec--;
+                    if(document.getElementById('countdown')) document.getElementById('countdown').innerText = sec;
+                }, 1000);
+            </script>
+        </body>
+        </html>
+        """
+        return render_template_string(html_page)
+
+    return jsonify({'success': True, 'message': '已在背景啟動同步任務，請稍候於 Google Sheets 查看。'})
 
 @app.route('/api/config', methods=['GET'])
 def get_config():

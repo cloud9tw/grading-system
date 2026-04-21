@@ -10,3 +10,4 @@ google-auth-oauthlib
 MarkupSafe
 cryptography
 oauth2client
+playwright
