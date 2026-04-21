@@ -4,12 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def get_gspread_client():
-    # Reuse the logic or path from your app.py
-    # Assuming credentials.json is in the same folder
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds_path = os.path.join(os.path.dirname(__file__), 'credentials.json')
-    return gspread.service_account(filename=creds_path, scopes=scope)
+from credentials_utils import get_gspread_client
 
 def archive_to_sheets(records, sheet_name="CEEP_DOPS"):
     """
