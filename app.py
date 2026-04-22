@@ -301,7 +301,7 @@ def feedback_page():
         return redirect('/login')
     # 僅限學員身份使用
     if session.get('current_role') != 'student':
-        return render_template('error.html', message='教學回饋表僅限學員身份使用。若您同時具有教師與學員身份，請先切換至「學員介面」再團入。'), 403
+        return render_template('error.html', message='教學回饋表僅限學員身份使用。若您同時具有教師與學員身份，請先切換至「學員介面」再點擊。'), 403
     try:
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
@@ -910,6 +910,260 @@ def sync_ceep_stream():
     response.headers['Connection'] = 'keep-alive'
     return response
 
+# =====================================================================
+# 📅 實習進度排程系統 (28 週日曆引擎)
+# =====================================================================
+
+def get_intern_year():
+    """取得目前的實習學年度 (以 7 月為分界)"""
+    now = datetime.datetime.now()
+    return now.year if now.month >= 7 else now.year - 1
+
+def get_internship_start(year=None):
+    """
+    取得實習開始日：指定年份 7 月的第一個星期一。
+    例如 2026 年 -> 2026-07-06
+    """
+    if year is None:
+        year = get_intern_year()
+    d = datetime.date(year, 7, 1)
+    # weekday() 0=Monday, 移動到下一個星期一
+    days_ahead = (7 - d.weekday()) % 7
+    return d + datetime.timedelta(days=days_ahead)
+
+def get_current_intern_week(target_date=None):
+    """
+    計算今天（或指定日期）落在第幾週。
+    - W1 = 7月第一個星期一起的 7 天
+    - W27, W28 為「手動自選週」
+    - 超出 28 週範圍回傳 None
+    """
+    if target_date is None:
+        target_date = datetime.date.today()
+    elif isinstance(target_date, datetime.datetime):
+        target_date = target_date.date()
+
+    start = get_internship_start()
+    delta = (target_date - start).days
+    if delta < 0:
+        return None  # 尚未開始
+    week = delta // 7 + 1
+    if week > 28:
+        return None  # 已超過實習期
+    return week
+
+SCHEDULE_SHEET_NAME = '學生進度排程'
+MANUAL_WEEK_LABEL = '手動自選'
+
+@app.route('/api/admin/schedule', methods=['GET'])
+def get_admin_schedule():
+    """讀取所有學生的 W1~W28 站別排程"""
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': '僅限管理員'}), 403
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+
+        # 嘗試讀取排程表，若不存在則建立
+        try:
+            ws = doc.worksheet(SCHEDULE_SHEET_NAME)
+        except Exception:
+            # 建立新分頁，標頭為：學員姓名, 學員ID, W1, W2, ... W28
+            headers = ['學員姓名', '學員ID'] + [f'W{i}' for i in range(1, 29)]
+            ws = doc.add_worksheet(title=SCHEDULE_SHEET_NAME, rows=100, cols=len(headers))
+            ws.append_row(headers)
+
+        records = safe_get_all_records(ws)
+        # 整理成 dict，key 為學員ID
+        schedule_map = {}
+        for rec in records:
+            sid = str(rec.get('學員ID', '')).strip()
+            if sid:
+                weeks = {}
+                for i in range(1, 29):
+                    val = str(rec.get(f'W{i}', '')).strip()
+                    # 解析以逗號分隔的複數站別
+                    weeks[f'W{i}'] = [s.strip() for s in val.split(',') if s.strip()] if val else []
+                schedule_map[sid] = {
+                    'name': str(rec.get('學員姓名', '')).strip(),
+                    'id': sid,
+                    'weeks': weeks
+                }
+
+        # 同時取得目前可選的站別清單
+        try:
+            room_sheet = doc.worksheet('站別OPA細項')
+            station_records = safe_get_all_records(room_sheet)
+            stations = [str(r.get('站別', '')).strip() for r in station_records if str(r.get('站別', '')).strip()]
+        except Exception:
+            stations = []
+
+        current_week = get_current_intern_week()
+        intern_start = get_internship_start().isoformat()
+
+        return jsonify({
+            'success': True,
+            'schedule': schedule_map,
+            'stations': stations,
+            'current_week': current_week,
+            'intern_start': intern_start,
+            'manual_weeks': [27, 28]  # 最後兩週為手動自選
+        })
+    except Exception as e:
+        logging.error(f"get_admin_schedule error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/schedule', methods=['POST'])
+def save_admin_schedule():
+    """儲存（覆蓋）指定學生的 W1~W28 排程"""
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': '僅限管理員'}), 403
+    try:
+        data = request.json
+        # data 格式: { student_id: str, student_name: str, weeks: { W1: ["CT","MRI"], W2: [...], ... } }
+        student_id = str(data.get('student_id', '')).strip()
+        student_name = str(data.get('student_name', '')).strip()
+        weeks_data = data.get('weeks', {})
+
+        if not student_id:
+            return jsonify({'success': False, 'error': '缺少學員 ID'}), 400
+
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+
+        try:
+            ws = doc.worksheet(SCHEDULE_SHEET_NAME)
+        except Exception:
+            headers = ['學員姓名', '學員ID'] + [f'W{i}' for i in range(1, 29)]
+            ws = doc.add_worksheet(title=SCHEDULE_SHEET_NAME, rows=100, cols=len(headers))
+            ws.append_row(headers)
+
+        # 尋找現有列
+        all_values = ws.get_all_values()
+        target_row = None
+        for i, row in enumerate(all_values[1:], start=2):
+            if str(row[1] if len(row) > 1 else '').strip() == student_id:
+                target_row = i
+                break
+
+        # 建立新的一列資料
+        new_row = [student_name, student_id]
+        for i in range(1, 29):
+            stations_list = weeks_data.get(f'W{i}', [])
+            # 用逗號串接複數站別
+            new_row.append(', '.join(stations_list) if stations_list else '')
+
+        if target_row:
+            # 更新現有列
+            ws.update(f'A{target_row}', [new_row])
+        else:
+            # 新增一列
+            ws.append_row(new_row)
+
+        logging.info(f"Schedule saved for student {student_id} ({student_name})")
+        return jsonify({'success': True, 'msg': f'已儲存 {student_name} 的進度排程'})
+    except Exception as e:
+        logging.error(f"save_admin_schedule error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/schedule/init_all', methods=['POST'])
+def init_all_schedules():
+    """對所有學員批量建立預設排程 (W27, W28 = 手動自選，其餘為空)"""
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': '僅限管理員'}), 403
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+
+        students_records = safe_get_all_records(doc.worksheet('學員名單'))
+        students = [(str(r.get('姓名', '')).strip(), str(r.get('學生ID', '')).strip())
+                    for r in students_records if str(r.get('姓名', '')).strip()]
+
+        try:
+            ws = doc.worksheet(SCHEDULE_SHEET_NAME)
+        except Exception:
+            headers = ['學員姓名', '學員ID'] + [f'W{i}' for i in range(1, 29)]
+            ws = doc.add_worksheet(title=SCHEDULE_SHEET_NAME, rows=100, cols=len(headers))
+            ws.append_row(headers)
+
+        all_values = ws.get_all_values()
+        existing_ids = {str(row[1] if len(row) > 1 else '').strip() for row in all_values[1:]}
+
+        new_rows = []
+        for name, sid in students:
+            if sid and sid not in existing_ids:
+                row = [name, sid] + ['' for _ in range(26)] + [MANUAL_WEEK_LABEL, MANUAL_WEEK_LABEL]
+                new_rows.append(row)
+
+        if new_rows:
+            ws.append_rows(new_rows)
+
+        return jsonify({'success': True, 'msg': f'已初始化 {len(new_rows)} 位學員的排程'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/student/schedule', methods=['GET'])
+def get_student_schedule():
+    """學生查詢自己的本週與全程排程"""
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    try:
+        student_info = session.get('student_info', {})
+        student_id = str(student_info.get('id', '')).split('.')[0].strip()
+
+        if not student_id:
+            return jsonify({'success': False, 'error': '無法辨識學員 ID'}), 400
+
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+
+        try:
+            ws = doc.worksheet(SCHEDULE_SHEET_NAME)
+            records = safe_get_all_records(ws)
+        except Exception:
+            return jsonify({'success': True, 'current_week': None, 'current_stations': [], 'weeks': {}})
+
+        # 找同學的那一筆排程
+        student_schedule = None
+        for rec in records:
+            if str(rec.get('學員ID', '')).strip() == student_id:
+                student_schedule = rec
+                break
+
+        current_week = get_current_intern_week()
+        intern_start = get_internship_start().isoformat()
+        current_stations = []
+        weeks_map = {}
+
+        if student_schedule:
+            for i in range(1, 29):
+                val = str(student_schedule.get(f'W{i}', '')).strip()
+                stations = [s.strip() for s in val.split(',') if s.strip()] if val else []
+                weeks_map[f'W{i}'] = stations
+
+            if current_week and 1 <= current_week <= 28:
+                current_stations = weeks_map.get(f'W{current_week}', [])
+
+        return jsonify({
+            'success': True,
+            'current_week': current_week,
+            'current_stations': current_stations,
+            'intern_start': intern_start,
+            'weeks': weeks_map,
+            'manual_weeks': [27, 28]
+        })
+    except Exception as e:
+        logging.error(f"get_student_schedule error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     user = session.get('user')
@@ -1345,6 +1599,15 @@ def admin_portal():
                            sheet_main=sheet_id,
                            sheet_feedback=sheet_feedback,
                            students=students)
+
+@app.route('/admin/schedule')
+def admin_schedule():
+    """學生進度排程管理頁面"""
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return render_template('error.html', message='權限不足：此頁面僅限系統管理員進入。'), 403
+    return render_template('schedule_manager.html', user=user)
+
 
 @app.route('/admin/simulate_student', methods=['POST'])
 def simulate_student():

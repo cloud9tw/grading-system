@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學生進度排程管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+
+        /* Multi-select tag styles */
+        .tag-input-wrapper {
+            min-height: 38px; display: flex; flex-wrap: wrap; gap: 4px;
+            align-items: center; padding: 4px 8px;
+            border: 1px solid #e2e8f0; border-radius: 8px; cursor: text;
+            background: white; transition: border-color 0.2s;
+        }
+        .tag-input-wrapper:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+        .tag-badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            background: #eef2ff; color: #4f46e5; font-size: 11px;
+            font-weight: 600; padding: 2px 8px; border-radius: 9999px;
+            border: 1px solid #c7d2fe;
+        }
+        .tag-badge button { background: none; border: none; cursor: pointer; color: #818cf8; line-height: 1; font-size: 14px; padding: 0; }
+        .tag-badge button:hover { color: #ef4444; }
+        .manual-tag { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+
+        /* Week grid */
+        .week-row { transition: background 0.15s; }
+        .week-row:hover { background: #f8fafc; }
+        .week-label { width: 52px; font-size: 12px; font-weight: 700; color: #94a3b8; text-align: center; }
+        .week-current .week-label { color: #6366f1; background: #eef2ff; border-radius: 6px; }
+
+        /* Dropdown */
+        .station-dropdown {
+            position: absolute; z-index: 50; top: calc(100% + 4px); left: 0; right: 0;
+            background: white; border: 1px solid #e2e8f0; border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.12); max-height: 200px; overflow-y: auto;
+        }
+        .station-option { padding: 8px 12px; cursor: pointer; font-size: 13px; color: #374151; display: flex; align-items: center; gap: 8px; }
+        .station-option:hover { background: #f0f0ff; color: #4f46e5; }
+        .station-option.selected { font-weight: 600; }
+
+        /* Student selector */
+        .student-card { cursor: pointer; transition: all 0.2s; border: 2px solid #e2e8f0; }
+        .student-card:hover { border-color: #a5b4fc; }
+        .student-card.active { border-color: #6366f1; background: #eef2ff; }
+
+        .pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+        .save-btn-row { opacity: 0; transition: all 0.2s; pointer-events: none; }
+        .save-btn-row.dirty { opacity: 1; pointer-events: all; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Nav -->
+<nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+            <a href="/admin" class="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold text-sm">
+                <i class="fas fa-arrow-left"></i> 返回管理中心
+            </a>
+            <div class="h-5 w-px bg-gray-200"></div>
+            <span class="font-bold text-gray-900 text-lg">📅 學生進度排程管理</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <div id="week-indicator" class="text-sm bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-lg font-semibold hidden">
+                <i class="fas fa-calendar-week mr-1"></i>
+                <span id="week-indicator-text">載入中...</span>
+            </div>
+            <button id="init-all-btn" onclick="initAllStudents()"
+                class="text-sm px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100 font-medium transition">
+                <i class="fas fa-users-cog mr-1"></i> 一鍵初始化所有學員
+            </button>
+        </div>
+    </div>
+</nav>
+
+<main class="max-w-7xl mx-auto py-8 px-4 grid grid-cols-12 gap-6">
+
+    <!-- Left: Student List -->
+    <aside class="col-span-12 md:col-span-3">
+        <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sticky top-20">
+            <p class="text-xs text-gray-500 font-semibold uppercase tracking-wider mb-3">學員名單</p>
+            <div id="student-list" class="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+                <div class="text-gray-400 text-sm text-center py-8 pulse">載入中...</div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right: Schedule Editor -->
+    <section class="col-span-12 md:col-span-9">
+        <div id="empty-state" class="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 flex flex-col items-center justify-center text-center">
+            <i class="fas fa-mouse-pointer text-4xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 font-medium">請從左側選擇一位學員以編輯其 28 週排程</p>
+        </div>
+
+        <div id="editor-panel" class="hidden">
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-4">
+                <div class="flex items-center justify-between mb-6">
+                    <div>
+                        <h2 id="editor-title" class="text-xl font-bold text-gray-900"></h2>
+                        <p class="text-sm text-gray-500 mt-1" id="editor-subtitle"></p>
+                    </div>
+                    <div id="save-btn-row" class="save-btn-row flex gap-3">
+                        <span class="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg font-medium self-center">
+                            <i class="fas fa-circle-dot mr-1"></i>有未儲存的修改
+                        </span>
+                        <button onclick="saveCurrentSchedule()"
+                            class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition shadow-sm">
+                            <i class="fas fa-save mr-1"></i> 儲存排程
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Week Grid -->
+                <div id="week-grid" class="space-y-1"></div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- Toast -->
+<div id="toast" class="fixed bottom-6 right-6 z-50 hidden">
+    <div id="toast-inner" class="flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium">
+        <i id="toast-icon"></i>
+        <span id="toast-msg"></span>
+    </div>
+</div>
+
+<script>
+let scheduleData = {};   // { student_id: { name, id, weeks: { W1: [...], ... } } }
+let stationList = [];    // 可選站別陣列，從 API 取得
+let currentStudentId = null;
+let draftWeeks = {};     // 目前正在編輯的學生 weeks (可能已修改，未儲存)
+let isDirty = false;
+let currentWeek = null;
+let activeDropdownEl = null; // 正在開著的下拉選單
+
+async function init() {
+    try {
+        const res = await fetch('/api/admin/schedule');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        scheduleData = data.schedule;
+        stationList = data.stations;
+        currentWeek = data.current_week;
+
+        // 顯示目前週次
+        if (currentWeek) {
+            document.getElementById('week-indicator').classList.remove('hidden');
+            document.getElementById('week-indicator-text').textContent = `目前為第 ${currentWeek} 週`;
+        }
+
+        renderStudentList();
+    } catch (e) {
+        showToast('載入失敗：' + e.message, 'error');
+    }
+}
+
+function renderStudentList() {
+    const container = document.getElementById('student-list');
+    const students = Object.values(scheduleData).sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+
+    if (students.length === 0) {
+        container.innerHTML = `<p class="text-gray-400 text-sm text-center py-8">尚無學員排程資料<br><button onclick="initAllStudents()" class="mt-2 text-indigo-500 underline text-xs">點此初始化</button></p>`;
+        return;
+    }
+
+    container.innerHTML = students.map(s => `
+        <div class="student-card rounded-xl px-3 py-2.5" id="sc-${s.id}" onclick="selectStudent('${s.id}')">
+            <div class="font-semibold text-sm text-gray-800">${s.name}</div>
+            <div class="text-xs text-gray-400">#${s.id}</div>
+        </div>
+    `).join('');
+}
+
+function selectStudent(sid) {
+    if (currentStudentId === sid) return;
+
+    // 若有未儲存的修改，提示
+    if (isDirty && currentStudentId) {
+        if (!confirm('有未儲存的排程修改，確定要切換學員嗎？')) return;
+    }
+
+    currentStudentId = sid;
+    const s = scheduleData[sid];
+
+    // 更新 active 狀態
+    document.querySelectorAll('.student-card').forEach(el => el.classList.remove('active'));
+    const card = document.getElementById(`sc-${sid}`);
+    if (card) card.classList.add('active');
+
+    // 初始化草稿
+    draftWeeks = {};
+    for (let i = 1; i <= 28; i++) {
+        const key = `W${i}`;
+        draftWeeks[key] = [...(s.weeks[key] || [])];
+    }
+    isDirty = false;
+    markDirty(false);
+
+    document.getElementById('editor-title').textContent = `${s.name} 的實習進度排程`;
+    document.getElementById('editor-subtitle').textContent = `學員 ID: ${sid} | 共 28 週 | W27, W28 預設為手動自選週`;
+
+    document.getElementById('empty-state').classList.add('hidden');
+    document.getElementById('editor-panel').classList.remove('hidden');
+
+    renderWeekGrid(s);
+}
+
+function renderWeekGrid(student) {
+    const grid = document.getElementById('week-grid');
+    grid.innerHTML = '';
+
+    for (let i = 1; i <= 28; i++) {
+        const wKey = `W${i}`;
+        const isManual = i >= 27;
+        const isCurrent = i === currentWeek;
+
+        const row = document.createElement('div');
+        row.className = `week-row flex items-center gap-3 p-2 rounded-lg ${isCurrent ? 'week-current bg-indigo-50' : ''}`;
+        row.id = `week-row-${i}`;
+
+        row.innerHTML = `
+            <div class="week-label shrink-0 py-1 ${isCurrent ? '' : ''}">${wKey}</div>
+            <div class="flex-1 relative" id="tag-container-${i}"></div>
+        `;
+        grid.appendChild(row);
+
+        // 渲染 Tag Input
+        renderTagInput(i, isManual);
+    }
+}
+
+function renderTagInput(weekNum, isManual) {
+    const container = document.getElementById(`tag-container-${weekNum}`);
+    const wKey = `W${weekNum}`;
+    const currentTags = draftWeeks[wKey] || [];
+
+    container.innerHTML = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'tag-input-wrapper';
+    wrapper.id = `tag-wrapper-${weekNum}`;
+
+    // 渲染 Tags
+    currentTags.forEach(station => {
+        const tag = document.createElement('span');
+        tag.className = `tag-badge ${isManual ? 'manual-tag' : ''}`;
+        tag.innerHTML = `${station} <button type="button" onclick="removeTag(${weekNum}, '${station}')">×</button>`;
+        wrapper.appendChild(tag);
+    });
+
+    // Add button
+    if (!isManual || currentTags.length === 0) {
+        const addBtn = document.createElement('button');
+        addBtn.type = 'button';
+        addBtn.className = 'text-xs text-gray-400 hover:text-indigo-500 px-1 flex items-center gap-1 transition';
+        addBtn.innerHTML = `<i class="fas fa-plus-circle"></i> ${isManual ? '自選站別' : '新增站別'}`;
+        addBtn.onclick = (e) => { e.stopPropagation(); openDropdown(weekNum, addBtn); };
+        wrapper.appendChild(addBtn);
+    }
+
+    container.appendChild(wrapper);
+
+    // Dropdown (hidden by default)
+    const dropdown = document.createElement('div');
+    dropdown.className = 'station-dropdown hidden';
+    dropdown.id = `dropdown-${weekNum}`;
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = '搜尋站別...';
+    searchInput.className = 'w-full px-3 py-2 text-sm border-b border-gray-100 outline-none';
+    searchInput.oninput = () => filterDropdown(weekNum, searchInput.value);
+    dropdown.appendChild(searchInput);
+
+    const optContainer = document.createElement('div');
+    optContainer.id = `opt-container-${weekNum}`;
+    const stationsToShow = isManual ? [{ label: '手動自選', value: '手動自選' }, ...stationList.map(s => ({ label: s, value: s }))]
+                                    : stationList.map(s => ({ label: s, value: s }));
+
+    stationsToShow.forEach(({ label, value }) => {
+        const opt = document.createElement('div');
+        opt.className = `station-option ${currentTags.includes(value) ? 'selected text-indigo-600 bg-indigo-50' : ''}`;
+        opt.dataset.value = value;
+        opt.innerHTML = `<i class="fas ${currentTags.includes(value) ? 'fa-check-circle text-indigo-500' : 'fa-circle text-gray-200'} text-xs"></i> ${label}`;
+        opt.onclick = () => toggleTag(weekNum, value);
+        optContainer.appendChild(opt);
+    });
+    dropdown.appendChild(optContainer);
+    container.appendChild(dropdown);
+}
+
+function openDropdown(weekNum, relativeTo) {
+    // 關閉其他開著的下拉
+    if (activeDropdownEl) activeDropdownEl.classList.add('hidden');
+
+    const dropdown = document.getElementById(`dropdown-${weekNum}`);
+    dropdown.classList.remove('hidden');
+    activeDropdownEl = dropdown;
+
+    // 聚焦搜尋框
+    setTimeout(() => dropdown.querySelector('input')?.focus(), 50);
+}
+
+// 點擊空白處關閉下拉
+document.addEventListener('click', (e) => {
+    if (activeDropdownEl && !activeDropdownEl.contains(e.target) && !e.target.closest('.tag-input-wrapper')) {
+        activeDropdownEl.classList.add('hidden');
+        activeDropdownEl = null;
+    }
+});
+
+function filterDropdown(weekNum, query) {
+    const container = document.getElementById(`opt-container-${weekNum}`);
+    if (!container) return;
+    container.querySelectorAll('.station-option').forEach(opt => {
+        opt.style.display = opt.dataset.value.includes(query) ? '' : 'none';
+    });
+}
+
+function toggleTag(weekNum, station) {
+    const wKey = `W${weekNum}`;
+    if (!draftWeeks[wKey]) draftWeeks[wKey] = [];
+
+    const idx = draftWeeks[wKey].indexOf(station);
+    if (idx >= 0) {
+        draftWeeks[wKey].splice(idx, 1);
+    } else {
+        draftWeeks[wKey].push(station);
+    }
+    markDirty(true);
+
+    const isManual = weekNum >= 27;
+    renderTagInput(weekNum, isManual); // 重繪此週
+}
+
+function removeTag(weekNum, station) {
+    const wKey = `W${weekNum}`;
+    if (!draftWeeks[wKey]) return;
+    draftWeeks[wKey] = draftWeeks[wKey].filter(s => s !== station);
+    markDirty(true);
+    renderTagInput(weekNum, weekNum >= 27);
+}
+
+function markDirty(dirty) {
+    isDirty = dirty;
+    const saveBtnRow = document.getElementById('save-btn-row');
+    if (dirty) saveBtnRow.classList.add('dirty');
+    else saveBtnRow.classList.remove('dirty');
+}
+
+async function saveCurrentSchedule() {
+    if (!currentStudentId) return;
+    const s = scheduleData[currentStudentId];
+
+    try {
+        const res = await fetch('/api/admin/schedule', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                student_id: s.id,
+                student_name: s.name,
+                weeks: draftWeeks
+            })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.error);
+
+        // 更新本地快取
+        scheduleData[currentStudentId].weeks = { ...draftWeeks };
+        markDirty(false);
+        showToast(data.msg || '儲存成功！', 'success');
+    } catch (e) {
+        showToast('儲存失敗：' + e.message, 'error');
+    }
+}
+
+async function initAllStudents() {
+    if (!confirm('此操作將為所有尚未建立排程的學員建立預設空白排程 (W27, W28 設為手動自選)，確認執行？')) return;
+    try {
+        const res = await fetch('/api/admin/schedule/init_all', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.success ? data.msg : data.error, data.success ? 'success' : 'error');
+        if (data.success) setTimeout(() => location.reload(), 1500);
+    } catch (e) {
+        showToast('初始化失敗', 'error');
+    }
+}
+
+function showToast(msg, type = 'success') {
+    const toast = document.getElementById('toast');
+    const inner = document.getElementById('toast-inner');
+    const icon = document.getElementById('toast-icon');
+    document.getElementById('toast-msg').textContent = msg;
+
+    if (type === 'success') {
+        inner.className = 'flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium bg-emerald-500';
+        icon.className = 'fas fa-check-circle';
+    } else {
+        inner.className = 'flex items-center gap-3 px-5 py-3 rounded-xl shadow-lg text-white text-sm font-medium bg-red-500';
+        icon.className = 'fas fa-exclamation-circle';
+    }
+
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 3000);
+}
+
+init();
+</script>
+</body>
+</html>

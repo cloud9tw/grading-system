@@ -95,8 +95,36 @@
                 </div>
             </div>
         </div>
+        <!-- 本週實習進度卡片 -->
+        <div id="week-progress-card" class="hidden mb-8">
+            <div class="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                            <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-violet-200 text-xs font-semibold uppercase tracking-wider">目前實習週次</p>
+                            <p id="week-progress-title" class="text-2xl font-extrabold">載入中...</p>
+                            <div id="week-progress-stations" class="flex flex-wrap gap-2 mt-2"></div>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0">
+                        <p class="text-violet-200 text-xs">實習起始日</p>
+                        <p id="week-progress-start" class="text-sm font-semibold">—</p>
+                        <div class="w-32 bg-white/20 rounded-full h-2 mt-2">
+                            <div id="week-progress-bar" class="bg-white rounded-full h-2 transition-all duration-700" style="width:0%"></div>
+                        </div>
+                        <p id="week-progress-pct" class="text-violet-200 text-xs mt-1">—</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- EPA 質性回饋待確認面板 (New) -->
+
         <div id="epa-feedback-panel" class="hidden animate-bounce-subtle">
             <div class="bg-white rounded-2xl shadow-xl border-4 border-red-500 overflow-hidden mb-8">
                 <div class="bg-red-500 text-white px-6 py-3 flex items-center gap-2">
@@ -1019,7 +1047,50 @@
                 alert('網路錯誤');
             }
         }
+
+        // ── 本週進度卡片 ──────────────────────────────────────────
+        async function fetchSchedule() {
+            try {
+                const res = await fetch('/api/student/schedule');
+                const data = await res.json();
+                if (!data.success || data.current_week === null) return;
+
+                const card = document.getElementById('week-progress-card');
+                const title = document.getElementById('week-progress-title');
+                const stationsEl = document.getElementById('week-progress-stations');
+                const startEl = document.getElementById('week-progress-start');
+                const bar = document.getElementById('week-progress-bar');
+                const pct = document.getElementById('week-progress-pct');
+
+                card.classList.remove('hidden');
+                title.textContent = `第 ${data.current_week} 週 / 共 28 週`;
+
+                // 顯示本週預定站別
+                const stations = data.current_stations || [];
+                stationsEl.innerHTML = stations.length > 0
+                    ? stations.map(s => `<span class="bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">${s}</span>`).join('')
+                    : `<span class="text-violet-300 text-xs italic">管理員尚未設定本週站別</span>`;
+
+                // 起始日
+                if (data.intern_start) {
+                    startEl.textContent = data.intern_start;
+                }
+
+                // 進度條
+                const pctVal = Math.round((data.current_week / 28) * 100);
+                bar.style.width = `${pctVal}%`;
+                pct.textContent = `${pctVal}% 完成`;
+
+            } catch (e) {
+                // 靜默失敗，不影響其他頁面功能
+                safeLog && safeLog(`Schedule fetch error: ${e.message}`, 'WARN');
+            }
+        }
+
+        // 頁面載入時初始化進度卡片
+        fetchSchedule();
     </script>
+
 </body>
 
 </html>
