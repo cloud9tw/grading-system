@@ -181,8 +181,17 @@
                 const matchedStudent = configData.students.find(s => String(s.id) === String(targetStudentId));
                 if (matchedStudent) {
                     studentSelect.value = matchedStudent.name;
-                    // 提示文字
-                    showMessage('success', '掃碼成功', `已自動帶入学員：${matchedStudent.name}`);
+                    
+                    // 顯示提示文字
+                    const msgBox = document.getElementById('messageBox');
+                    const msgIcon = document.getElementById('messageIcon');
+                    const msgText = document.getElementById('messageText');
+                    msgBox.classList.remove('hidden', 'bg-red-50', 'bg-yellow-50');
+                    msgBox.classList.add('bg-green-50');
+                    msgText.classList.remove('text-red-800', 'text-yellow-800');
+                    msgText.classList.add('text-green-800');
+                    msgIcon.innerHTML = `<svg class="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /></svg>`;
+                    msgText.textContent = `掃碼成功！已自動帶入学員：${matchedStudent.name}`;
                 }
             }
 
