@@ -31,8 +31,24 @@
         /* Week grid */
         .week-row { transition: background 0.15s; }
         .week-row:hover { background: #f8fafc; }
-        .week-label { width: 52px; font-size: 12px; font-weight: 700; color: #94a3b8; text-align: center; }
+        .week-label {
+            width: 62px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #94a3b8;
+            text-align: center;
+            line-height: 1.2;
+            flex-direction: column;
+        }
+        .week-date {
+            font-size: 10px;
+            font-weight: 400;
+            color: #c2cada;
+            margin-top: 2px;
+            white-space: nowrap;
+        }
         .week-current .week-label { color: #6366f1; background: #eef2ff; border-radius: 6px; }
+        .week-current .week-date { color: #a5b4fc; }
 
         /* Dropdown */
         .station-dropdown {
@@ -140,6 +156,7 @@ let currentStudentId = null;
 let draftWeeks = {};     // 目前正在編輯的學生 weeks (可能已修改，未儲存)
 let isDirty = false;
 let currentWeek = null;
+let internStart = null;  // 實習起始日 (Date 物件)
 let activeDropdownEl = null; // 正在開著的下拉選單
 
 async function init() {
@@ -151,6 +168,7 @@ async function init() {
         scheduleData = data.schedule;
         stationList = data.stations;
         currentWeek = data.current_week;
+        internStart = data.intern_start ? new Date(data.intern_start) : null;
 
         // 顯示目前週次
         if (currentWeek) {
@@ -224,12 +242,26 @@ function renderWeekGrid(student) {
         const isManual = i >= 27;
         const isCurrent = i === currentWeek;
 
+        // 計算本週起訖日期
+        let dateRange = '';
+        if (internStart) {
+            const weekStart = new Date(internStart);
+            weekStart.setDate(weekStart.getDate() + (i - 1) * 7);
+            const weekEnd = new Date(weekStart);
+            weekEnd.setDate(weekEnd.getDate() + 6);
+            const fmt = (d) => `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+            dateRange = `${fmt(weekStart)}~${fmt(weekEnd)}`;
+        }
+
         const row = document.createElement('div');
         row.className = `week-row flex items-center gap-3 p-2 rounded-lg ${isCurrent ? 'week-current bg-indigo-50' : ''}`;
         row.id = `week-row-${i}`;
 
         row.innerHTML = `
-            <div class="week-label shrink-0 py-1 ${isCurrent ? '' : ''}">${wKey}</div>
+            <div class="week-label shrink-0 py-1 flex flex-col items-center">
+                <span>${wKey}</span>
+                ${dateRange ? `<span class="week-date">${dateRange}</span>` : ''}
+            </div>
             <div class="flex-1 relative" id="tag-container-${i}"></div>
         `;
         grid.appendChild(row);

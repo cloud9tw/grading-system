@@ -992,11 +992,19 @@ def get_admin_schedule():
                     'weeks': weeks
                 }
 
-        # 同時取得目前可選的站別清單
+        # 取得小站清單：從「檢查室清單」讀取各部門下的子檢查室 (小站)
         try:
-            room_sheet = doc.worksheet('站別OPA細項')
-            station_records = safe_get_all_records(room_sheet)
-            stations = [str(r.get('站別', '')).strip() for r in station_records if str(r.get('站別', '')).strip()]
+            room_sheet = doc.worksheet('檢查室清單')
+            all_rows = room_sheet.get_all_values()
+            stations = []
+            seen = set()
+            for row in all_rows:
+                # 第一欄為大站名稱，第二欄起為各小站
+                for cell in row[1:]:
+                    val = str(cell).strip()
+                    if val and val not in seen:
+                        stations.append(val)
+                        seen.add(val)
         except Exception:
             stations = []
 
