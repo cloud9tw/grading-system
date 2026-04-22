@@ -23,10 +23,17 @@
     <!-- 模擬狀態提示列 -->
     <div class="bg-purple-600 text-white py-3 px-4 shadow-lg sticky top-0 z-[100] flex justify-between items-center">
         <div class="flex items-center">
-            <svg class="w-6 h-6 mr-3 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+            <svg class="w-6 h-6 mr-3 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z">
+                </path>
+            </svg>
             <span class="font-bold whitespace-nowrap">模擬模式：正在觀看 【{{ student_info.name }}】 的數據視角</span>
         </div>
-        <a href="/admin/stop_simulation" class="bg-white text-purple-600 px-4 py-1 rounded-full text-sm font-bold hover:bg-purple-50 transition-colors shadow-sm whitespace-nowrap ml-4">
+        <a href="/admin/stop_simulation"
+            class="bg-white text-purple-600 px-4 py-1 rounded-full text-sm font-bold hover:bg-purple-50 transition-colors shadow-sm whitespace-nowrap ml-4">
             結束模擬並返回後台
         </a>
     </div>
@@ -52,7 +59,8 @@
                         {% endif %}
                         {% if session.is_admin %}
                         <a href="/admin"
-                            class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 transition font-bold border border-yellow-200 shadow-sm mr-2">⚙️ 管理中心</a>
+                            class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded hover:bg-yellow-200 transition font-bold border border-yellow-200 shadow-sm mr-2">⚙️
+                            管理中心</a>
                         {% endif %}
                         <img class="h-8 w-8 rounded-full" src="{{ user.picture }}" alt="User avatar"
                             onerror="this.src='https://ui-avatars.com/api/?name={{ user.name }}'">
@@ -82,14 +90,17 @@
                 <div class="flex-1 flex flex-col justify-center sm:h-44 z-10 text-center sm:text-left">
                     <h2 class="text-2xl font-bold text-gray-900 mb-2">{{ student_info.name }}</h2>
                     <div class="flex flex-wrap justify-center sm:justify-start gap-2 mb-3">
-                        <span class="text-gray-500 font-mono bg-gray-100 py-1 px-3 rounded-md">{{ student_info.id }}</span>
+                        <span class="text-gray-500 font-mono bg-gray-100 py-1 px-3 rounded-md">{{ student_info.id
+                            }}</span>
                         <!-- 新增課程時數勳章 -->
-                        <span id="course-hours-badge" class="bg-orange-100 text-orange-700 font-bold py-1 px-3 rounded-md flex items-center gap-1">
+                        <span id="course-hours-badge"
+                            class="bg-orange-100 text-orange-700 font-bold py-1 px-3 rounded-md flex items-center gap-1">
                             🎓 <span id="val-courseHours">0.0</span> <span class="text-xs">小時</span>
                         </span>
                     </div>
                     <p class="mt-1 text-sm text-gray-600 max-w-md">將此條碼出示給臨床教師掃描，對方即可直接進入您的專屬評分畫面。</p>
-                    <a href="/feedback" class="mt-4 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow transition w-fit mx-auto sm:mx-0">
+                    <a href="/feedback"
+                        class="mt-4 inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm px-4 py-2 rounded-lg shadow transition w-fit mx-auto sm:mx-0">
                         📝 填寫教師教學回饋表
                     </a>
                 </div>
@@ -102,7 +113,8 @@
                     <div class="flex items-center gap-4">
                         <div class="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
                             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                         </div>
                         <div>
@@ -115,7 +127,8 @@
                         <p class="text-violet-200 text-xs">實習起始日</p>
                         <p id="week-progress-start" class="text-sm font-semibold">—</p>
                         <div class="w-32 bg-white/20 rounded-full h-2 mt-2">
-                            <div id="week-progress-bar" class="bg-white rounded-full h-2 transition-all duration-700" style="width:0%"></div>
+                            <div id="week-progress-bar" class="bg-white rounded-full h-2 transition-all duration-700"
+                                style="width:0%"></div>
                         </div>
                         <p id="week-progress-pct" class="text-violet-200 text-xs mt-1">—</p>
                     </div>
@@ -128,8 +141,12 @@
         <div id="epa-feedback-panel" class="hidden animate-bounce-subtle">
             <div class="bg-white rounded-2xl shadow-xl border-4 border-red-500 overflow-hidden mb-8">
                 <div class="bg-red-500 text-white px-6 py-3 flex items-center gap-2">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                    <h3 class="font-bold text-lg">🔔 待確認的評核回饋 (重要)</h3>
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+                        </path>
+                    </svg>
+                    <h3 class="font-bold text-lg">🔔 待確認的EPA評核回饋 (重要)</h3>
                 </div>
                 <div id="epa-feedback-list" class="p-6 space-y-6 divide-y divide-gray-100">
                     <!-- 內容由 JS 動態生成 -->
@@ -139,10 +156,20 @@
 
         <style>
             @keyframes bounce-subtle {
-                0%, 100% { transform: translateY(0); }
-                50% { transform: translateY(-5px); }
+
+                0%,
+                100% {
+                    transform: translateY(0);
+                }
+
+                50% {
+                    transform: translateY(-5px);
+                }
             }
-            .animate-bounce-subtle { animation: bounce-subtle 3s ease-in-out infinite; }
+
+            .animate-bounce-subtle {
+                animation: bounce-subtle 3s ease-in-out infinite;
+            }
         </style>
 
         <script>
@@ -159,15 +186,15 @@
                 safeLog("Fetching pending EPA feedbacks...");
                 const panel = document.getElementById('epa-feedback-panel');
                 const list = document.getElementById('epa-feedback-list');
-                
+
                 try {
                     const res = await fetch('/api/pending_epa_feedbacks');
                     const result = await res.json();
-                    
+
                     if (result.success && result.data && result.data.length > 0) {
                         list.innerHTML = '';
                         panel.classList.remove('hidden');
-                        
+
                         result.data.forEach(item => {
                             const itemDiv = document.createElement('div');
                             itemDiv.className = "pt-4 first:pt-0";
@@ -206,13 +233,13 @@
 
             async function confirmFeedback(btn, rowIndex) {
                 const originalContent = btn.innerHTML;
-                
+
                 btn.disabled = true;
                 btn.innerHTML = '<span class="animate-spin mr-1">⌛</span>處理中...';
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
 
                 const reply = document.getElementById(`reply-${rowIndex}`).value;
-                
+
                 try {
                     const res = await fetch('/api/confirm_epa_feedback', {
                         method: 'POST',
@@ -237,7 +264,7 @@
                     btn.classList.remove('opacity-50', 'cursor-not-allowed');
                 }
             }
-            
+
             document.addEventListener('DOMContentLoaded', () => {
                 setTimeout(fetchPendingEPA, 1200);
             });
@@ -245,11 +272,14 @@
 
         <!-- 導航標籤頁 (Tabs) -->
         <div class="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-6">
-            <button onclick="switchTab('tabGrowth')" id="btn-tabGrowth" class="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors bg-white text-gray-900 shadow-sm">學習成長曲線</button>
-            <button onclick="switchTab('tabGamification')" id="btn-tabGamification" class="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors text-gray-500 hover:text-gray-700">成就與任務進度</button>
-            <button onclick="switchTab('tabLeaderboard')" id="btn-tabLeaderboard" class="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors text-gray-500 hover:text-gray-700">英雄榜</button>
+            <button onclick="switchTab('tabGrowth')" id="btn-tabGrowth"
+                class="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors bg-white text-gray-900 shadow-sm">學習成長曲線</button>
+            <button onclick="switchTab('tabGamification')" id="btn-tabGamification"
+                class="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors text-gray-500 hover:text-gray-700">成就與任務進度</button>
+            <button onclick="switchTab('tabLeaderboard')" id="btn-tabLeaderboard"
+                class="flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors text-gray-500 hover:text-gray-700">英雄榜</button>
         </div>
-        
+
         <script>
             function logDiag(msg, type = "INFO") {
                 const logs = document.getElementById('diagLogs');
@@ -296,13 +326,13 @@
                     console.log("Switching to tab:", tabId);
                     const tabs = ['tabGrowth', 'tabGamification', 'tabLeaderboard'];
                     const buttons = ['btn-tabGrowth', 'btn-tabGamification', 'btn-tabLeaderboard'];
-                    
+
                     tabs.forEach(id => setVisible(id, false));
                     buttons.forEach(id => {
                         const btn = document.getElementById(id);
                         if (btn) btn.className = "flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors text-gray-500 hover:text-gray-700";
                     });
-                    
+
                     setVisible(tabId, true);
                     const activeBtn = document.getElementById('btn-' + tabId);
                     if (activeBtn) activeBtn.className = "flex-1 py-2 px-4 rounded-lg font-medium text-sm transition-colors bg-white text-gray-900 shadow-sm";
@@ -314,63 +344,72 @@
 
         <!-- 視覺化數據中心 (Tab 1: 學習成長) -->
         <div id="tabGrowth" style="display: block;">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                        d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
-                </svg>
-                各站別信賴等級成長曲線
-            </h3>
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+                <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                    </svg>
+                    各站別信賴等級成長曲線
+                </h3>
 
-            <div id="loadingIndicator" class="text-center py-10">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
-                <p class="text-gray-500 text-sm">正在載入學習歷程...</p>
-            </div>
-
-            <div id="noDataAlert"
-                style="display: none;" class="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-                <p class="text-gray-500">目前還沒有收到任何評分紀錄喔！</p>
-            </div>
-
-            <div id="dashboardContent" style="display: none;">
-                <!-- 站別按鈕 -->
-                <div id="stationButtons" class="flex flex-wrap gap-2 mb-8">
-                    <!-- 動態生成 -->
+                <div id="loadingIndicator" class="text-center py-10">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto mb-4"></div>
+                    <p class="text-gray-500 text-sm">正在載入學習歷程...</p>
                 </div>
 
-                <!-- 曲線圖容器 -->
-                <div class="relative h-80 w-full sm:h-96 mb-12">
-                    <canvas id="growthChart"></canvas>
+                <div id="noDataAlert" style="display: none;"
+                    class="text-center py-10 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                    <p class="text-gray-500">目前還沒有收到任何評分紀錄喔！</p>
                 </div>
 
-                <!-- EPA 量性回饋清單 (New) -->
-                <div id="epa-details-section" class="mt-8 border-t border-gray-100 pt-8">
-                    <h4 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
-                        EPA 詳細評分紀錄與回饋
-                    </h4>
-                    <div id="epa-list-container" class="space-y-4">
-                        <!-- 由 JS 動態生成 -->
+                <div id="dashboardContent" style="display: none;">
+                    <!-- 站別按鈕 -->
+                    <div id="stationButtons" class="flex flex-wrap gap-2 mb-8">
+                        <!-- 動態生成 -->
+                    </div>
+
+                    <!-- 曲線圖容器 -->
+                    <div class="relative h-80 w-full sm:h-96 mb-12">
+                        <canvas id="growthChart"></canvas>
+                    </div>
+
+                    <!-- EPA 量性回饋清單 (New) -->
+                    <div id="epa-details-section" class="mt-8 border-t border-gray-100 pt-8">
+                        <h4 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01">
+                                </path>
+                            </svg>
+                            EPA 詳細評分紀錄與回饋
+                        </h4>
+                        <div id="epa-list-container" class="space-y-4">
+                            <!-- 由 JS 動態生成 -->
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        
+
         </div> <!-- end tabGrowth -->
 
         <!-- 任務與成就中心 (Tab 2: Gamification) -->
         <div id="tabGamification" style="display: none;" class="space-y-8">
-            <div id="gamificationLoading" class="text-center py-10 bg-white rounded-2xl shadow-sm border border-gray-200">
+            <div id="gamificationLoading"
+                class="text-center py-10 bg-white rounded-2xl shadow-sm border border-gray-200">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-4"></div>
                 <p class="text-gray-500 text-sm">正在載入成就與任務進度...</p>
             </div>
-            
+
             <div id="gamificationContent" style="display: none;" class="space-y-8">
                 <!-- 積分算法說明 -->
                 <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-800 shadow-sm">
                     <div class="font-bold flex items-center gap-1 mb-1">
-                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path></svg>
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd"
+                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                clip-rule="evenodd"></path>
+                        </svg>
                         系統積分與獎項說明
                     </div>
                     <ul class="list-disc list-inside space-y-1 ml-1 text-indigo-700">
@@ -383,9 +422,14 @@
 
                 <!-- 狀態顯示卡片 -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
+                    <div
+                        class="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-6 text-white shadow-md relative overflow-hidden">
                         <div class="absolute right-0 top-0 opacity-10 transform translate-x-1/3 -translate-y-1/4">
-                            <svg class="w-48 h-48" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
+                            <svg class="w-48 h-48" fill="currentColor" viewBox="0 0 20 20">
+                                <path
+                                    d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z">
+                                </path>
+                            </svg>
                         </div>
                         <h3 class="text-lg font-bold mb-1">我的學習積分</h3>
                         <div class="text-5xl font-extrabold tracking-tight mb-2" id="g-points">0</div>
@@ -393,7 +437,11 @@
                     </div>
                     <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm flex flex-col justify-center">
                         <h3 class="text-lg font-bold text-gray-900 mb-3 flex items-center gap-2">
-                            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.23.615 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.229-.615a1 1 0 01.894-1.79l1.599.8L9 4.323V3a1 1 0 011-1z" clip-rule="evenodd"></path></svg>
+                            <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd"
+                                    d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.23.615 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.715-5.349L11 6.477V16h2a1 1 0 110 2H7a1 1 0 110-2h2V6.477L6.237 7.582l1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.019 1 1 0 01-.285-1.05l1.738-5.42-1.229-.615a1 1 0 01.894-1.79l1.599.8L9 4.323V3a1 1 0 011-1z"
+                                    clip-rule="evenodd"></path>
+                            </svg>
                             解鎖獎章
                         </h3>
                         <div id="g-medals" class="flex flex-col gap-2 w-full">
@@ -405,7 +453,12 @@
                 <!-- EPA 進度 -->
                 <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
                     <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path></svg>
+                        <svg class="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+                            <path fill-rule="evenodd"
+                                d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"
+                                clip-rule="evenodd"></path>
+                        </svg>
                         EPA 評分需求進度 (<span id="userTypeLabel"></span>)
                     </h3>
                     <div id="g-epa-bars" class="space-y-4">
@@ -413,10 +466,17 @@
                 </div>
 
                 <!-- 教學回饋進度 (Interns ONLY) -->
-                <div id="feedbackContainer" class="hidden bg-white rounded-2xl p-6 border border-gray-200 shadow-sm relative overflow-hidden">
-                    <div class="absolute top-0 right-0 bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-bl-lg">第 <span id="internWeekLabel">-</span> / 28 週</div>
+                <div id="feedbackContainer"
+                    class="hidden bg-white rounded-2xl p-6 border border-gray-200 shadow-sm relative overflow-hidden">
+                    <div
+                        class="absolute top-0 right-0 bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-bl-lg">
+                        第 <span id="internWeekLabel">-</span> / 28 週</div>
                     <h3 class="text-lg font-bold text-gray-900 mb-1 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clip-rule="evenodd"></path></svg>
+                        <svg class="w-5 h-5 text-orange-500" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd"
+                                d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+                                clip-rule="evenodd"></path>
+                        </svg>
                         教學回饋表提交進度
                     </h3>
                     <p class="text-gray-500 text-xs mb-4">每週需提交至少 1 份回饋。急診室視同 Routine。女性需繳交 Mammo。</p>
@@ -424,59 +484,82 @@
                     </div>
                 </div>
 
-            <!-- 打卡出勤 (底部) -->
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8 p-6 sm:p-8 relative">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
-                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
-                        打卡出勤紀錄表
-                    </h3>
-                    <button onclick="exportPDF()" class="text-sm bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        匯出 PDF
-                    </button>
-                </div>
-                
-                <div id="attendanceContainer" class="overflow-x-auto">
-                    <div class="text-center py-6 text-gray-500 text-sm">載入中...</div>
-                </div>
-            </div>
-        </div> <!-- end tabGamificationContent -->
-    </div> <!-- end tabGamification -->
+                <!-- 打卡出勤 (底部) -->
+                <div
+                    class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mt-8 p-6 sm:p-8 relative">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4">
+                                </path>
+                            </svg>
+                            打卡出勤紀錄表
+                        </h3>
+                        <button onclick="exportPDF()"
+                            class="text-sm bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1 transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                                </path>
+                            </svg>
+                            匯出 PDF
+                        </button>
+                    </div>
 
-    <!-- 英雄榜 (Tab 3: Leaderboard) -->
-    <div id="tabLeaderboard" style="display: none;" class="w-full">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
-            <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
-                <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"></path></svg>
-                實習學生榮譽榜 (TOP 3)
-            </h3>
-            
-            <div id="leaderboardLoading" class="text-center py-10">
-                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500 mx-auto mb-4"></div>
-            </div>
+                    <div id="attendanceContainer" class="overflow-x-auto">
+                        <div class="text-center py-6 text-gray-500 text-sm">載入中...</div>
+                    </div>
+                </div>
+            </div> <!-- end tabGamificationContent -->
+        </div> <!-- end tabGamification -->
 
-            <div id="leaderboardContent" style="display: none;">
-                <div class="overflow-hidden rounded-xl border border-gray-200">
-                    <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gradient-to-r from-yellow-50 to-orange-50">
-                            <tr>
-                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">排名</th>
-                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">實習生</th>
-                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">綜合積分</th>
-                                <th class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">累積獎章</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leaderboardTbody" class="bg-white divide-y divide-gray-200">
-                        </tbody>
-                    </table>
+        <!-- 英雄榜 (Tab 3: Leaderboard) -->
+        <div id="tabLeaderboard" style="display: none;" class="w-full">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+                <h3 class="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                            d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z">
+                        </path>
+                    </svg>
+                    實習學生榮譽榜 (TOP 3)
+                </h3>
+
+                <div id="leaderboardLoading" class="text-center py-10">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500 mx-auto mb-4"></div>
+                </div>
+
+                <div id="leaderboardContent" style="display: none;">
+                    <div class="overflow-hidden rounded-xl border border-gray-200">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-gradient-to-r from-yellow-50 to-orange-50">
+                                <tr>
+                                    <th
+                                        class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                        排名</th>
+                                    <th
+                                        class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                        實習生</th>
+                                    <th
+                                        class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                        綜合積分</th>
+                                    <th
+                                        class="px-6 py-4 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">
+                                        累積獎章</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leaderboardTbody" class="bg-white divide-y divide-gray-200">
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
         <!-- 🔧 系統診斷主控台 -->
-        <div id="diagConsole" class="mt-12 bg-gray-900 rounded-xl p-6 font-mono text-xs text-green-400 shadow-2xl border border-gray-700">
+        <div id="diagConsole"
+            class="mt-12 bg-gray-900 rounded-xl p-6 font-mono text-xs text-green-400 shadow-2xl border border-gray-700">
             <div class="flex items-center justify-between mb-4 border-b border-gray-700 pb-2">
                 <span class="text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2">
                     <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -507,14 +590,14 @@
 
                 // Force initial tab visibility
                 switchTab('tabGrowth');
-                
+
                 // Launch all fetches in parallel
                 logDiag("Launching parallel data fetches...");
                 fetchStats();
                 fetchAttendance();
                 fetchGamification();
                 fetchLeaderboard();
-                
+
                 logDiag("All fetch requests dispatched.");
             } catch (e) {
                 logDiag(`Critical Init Error: ${e.message}`, "ERROR");
@@ -526,22 +609,22 @@
             try {
                 const res = await fetchWithTimeout('/api/student_gamification');
                 const result = await res.json();
-                
+
                 logDiag(`Gamification API finished. Success: ${result.success}`);
                 setVisible('gamificationLoading', false);
-                
+
                 if (result.success && result.data) {
                     const data = result.data;
                     setVisible('gamificationContent', true);
-                    
+
                     document.getElementById('g-points').innerText = data.points || 0;
                     document.getElementById('userTypeLabel').innerText = data.student_type || '無';
-                    
+
                     // Show feedback and achievements regardless of exact type string, as long as they are students
                     setVisible('feedbackContainer', true);
                     logDiag("Gamification content populated.");
                     document.getElementById('internWeekLabel').innerText = data.internship_week || 0;
-                    
+
                     // Render Medals
                     const medalBox = document.getElementById('g-medals');
                     medalBox.innerHTML = '';
@@ -560,7 +643,7 @@
                             }
                         });
                     }
-                    
+
                     // Render EPA Bars
                     const epaBox = document.getElementById('g-epa-bars');
                     epaBox.innerHTML = '';
@@ -590,7 +673,7 @@
                     } else {
                         epaBox.innerHTML = '<p class="text-gray-500 text-sm">該類別沒有設定 EPA 目標</p>';
                     }
-                    
+
                     // Render Feedback Bars
                     const fbBox = document.getElementById('g-feedback-bars');
                     fbBox.innerHTML = '';
@@ -628,7 +711,7 @@
             try {
                 const res = await fetchWithTimeout('/api/leaderboard');
                 const result = await res.json();
-                
+
                 logDiag(`Leaderboard API finished. Success: ${result.success}, Count: ${result.data?.length || 0}`);
                 setVisible('leaderboardLoading', false);
                 setVisible('leaderboardContent', true);
@@ -639,7 +722,7 @@
                         return;
                     }
                     tbody.innerHTML = '';
-                    
+
                     if (result.data.length === 0) {
                         logDiag("Leaderboard data is empty.");
                         tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-10 text-center text-gray-500 italic">目前尚未有排名資料</td></tr>';
@@ -658,7 +741,7 @@
                             if (rank === 1) rankHtml = "👑 1";
                             else if (rank === 2) rankHtml = "🥈 2";
                             else if (rank === 3) rankHtml = "🥉 3";
-                            
+
                             let displayName = student.name || 'Unknown';
                             // Name masking removed as per user request
 
@@ -706,13 +789,13 @@
             try {
                 const res = await fetchWithTimeout('/api/student_stats');
                 const result = await res.json();
- 
+
                 setVisible('loadingIndicator', false);
                 logDiag(`Stats API Result: Success=${result.success}`);
-                
+
                 if (result.success && result.data && Object.keys(result.data).length > 0) {
                     allStats = result.data;
-                    
+
                     // 更新課程總時數顯示
                     if (result.course_hours !== undefined) {
                         const hVal = document.getElementById('val-courseHours');
@@ -762,7 +845,7 @@
 
         function renderChart(station) {
             let records = allStats[station];
-            
+
             // 強制確保：時間由左向右按時間排序 (Chronological sort)
             records.sort((a, b) => new Date(a.time) - new Date(b.time));
 
@@ -834,17 +917,17 @@
             const listContainer = document.getElementById('epa-list-container');
             if (listContainer) {
                 listContainer.innerHTML = '';
-                
+
                 // 逆序排列 (由新到舊) 以利閱讀
                 const sortedRecords = [...records].sort((a, b) => new Date(b.time) - new Date(a.time));
-                
+
                 if (sortedRecords.length === 0) {
                     listContainer.innerHTML = '<p class="text-gray-400 text-sm italic">尚無相關評核紀錄</p>';
                 } else {
                     sortedRecords.forEach(r => {
                         const card = document.createElement('div');
                         card.className = "bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-sm transition-shadow";
-                        
+
                         const scoreTag = (val, label) => {
                             let color = "bg-gray-200 text-gray-700";
                             if (val >= 7) color = "bg-green-100 text-green-700";
@@ -893,9 +976,9 @@
                 const res = await fetchWithTimeout('/api/student_attendance');
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const result = await res.json();
-                
+
                 logDiag(`Attendance Data Received: ${JSON.stringify(result.data).substring(0, 50)}...`);
-                
+
                 const container = document.getElementById('attendanceContainer');
                 if (!container) {
                     logDiag("Error: attendanceContainer element missing!", "ERROR");
@@ -916,7 +999,7 @@
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                     `;
-                    
+
                     result.data.forEach(item => {
                         html += `
                             <tr class="hover:bg-gray-50">
@@ -927,7 +1010,7 @@
                             </tr>
                         `;
                     });
-                    
+
                     html += `</tbody></table>`;
                     container.innerHTML = html;
                     logDiag("Attendance table rendered successfully.");
@@ -938,7 +1021,7 @@
                             目前尚未抓取到您的出勤紀錄
                         </div>`;
                 }
-            } catch(e) {
+            } catch (e) {
                 logDiag(`Attendance Error: ${e.message}`, "ERROR");
                 const container = document.getElementById('attendanceContainer');
                 if (container) container.innerHTML = `<div class="text-center py-6 text-red-500">無法讀取出勤紀錄: ${e.message}</div>`;
@@ -980,9 +1063,9 @@
                     </thead>
                     <tbody>
                         ${window.attendanceData.map((item, idx) => {
-                            const teacher = item.teacher || item.teacher_name || '-';
-                            const coTeacher = item.co_teacher || '-';
-                            return `
+                const teacher = item.teacher || item.teacher_name || '-';
+                const coTeacher = item.co_teacher || '-';
+                return `
                                 <tr style="background:${idx % 2 === 0 ? '#f5f7fa' : '#ffffff'};">
                                     <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_in || '-'}</td>
                                     <td style="padding:7px 6px;border:1px solid #ddd;">${item.check_out || '-'}</td>
@@ -991,7 +1074,7 @@
                                     <td style="padding:7px 6px;border:1px solid #ddd;">${coTeacher}</td>
                                 </tr>
                             `;
-                        }).join('')}
+            }).join('')}
                     </tbody>
                 </table>
             `;
