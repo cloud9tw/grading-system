@@ -41,7 +41,8 @@ async def scrape_ceep_all_forms(callback=None):
 
     targets = {
         "CEEP_DOPS": "醫學影像技術學-操作技能直接觀察(DOPS)評量表",
-        "CEEP_MiniCEX": "醫學影像技術學-迷你臨床演練評量(Mini-CEX)評量表"
+        "CEEP_MiniCEX": "醫學影像技術學-迷你臨床演練評量(Mini-CEX)評量表",
+        "CEEP_TeachingRecord": "醫事放射-教學記錄"
     }
     
     final_results = {}
@@ -80,11 +81,17 @@ async def scrape_ceep_all_forms(callback=None):
         await report("✅ 登入成功，開始抓取流程")
 
         for sheet_name, form_label in targets.items():
-            await report(f"➔ 準備抓取表單: {form_label}")
+            await report(f"➔ 準備抓取表單: {sheet_name}")
             all_records_for_form = []
 
             for year_label, plan_label in tasks:
-                await report(f"   [任務] {year_label} | {plan_label}")
+                # 根據身份動態決定教學記錄表單名稱
+                if sheet_name == "CEEP_TeachingRecord":
+                    current_form_label = "醫事放射-教學記錄(實習生)" if "實習" in plan_label else "醫事放射-PGY教學記錄"
+                else:
+                    current_form_label = form_label
+
+                await report(f"   [任務] {year_label} | {plan_label} -> 使用表單: {current_form_label}")
                 
                 # Navigate to Statistics directly
                 await page.goto("https://ceep2.tmu.edu.tw/admin/complex/assessment_form/assessment_form_statistics")
@@ -111,7 +118,7 @@ async def scrape_ceep_all_forms(callback=None):
                     await page.wait_for_timeout(1000)
                     
                     # 4. 選取表單名稱
-                    await page.select_option('select[name="sf_id"]', label=form_label)
+                    await page.select_option('select[name="sf_id"]', label=current_form_label)
 
                     # Click Search
                     await page.click('.btn-query')
@@ -159,7 +166,7 @@ async def scrape_ceep_all_forms(callback=None):
                     
                     await report(f"      ✔ 抓取完畢，共 {task_count} 筆紀錄")
                     task_summary.append({
-                        "form": "DOPS" if "DOPS" in sheet_name else "Mini-CEX",
+                        "form": sheet_name.replace("CEEP_", ""),
                         "year": year_label,
                         "plan": plan_label,
                         "count": task_count,
@@ -169,7 +176,7 @@ async def scrape_ceep_all_forms(callback=None):
                 except Exception as e:
                     await report(f"      ⚠ 任務失敗: {plan_label} - {e}")
                     task_summary.append({
-                        "form": "DOPS" if "DOPS" in sheet_name else "Mini-CEX",
+                        "form": sheet_name.replace("CEEP_", ""),
                         "year": year_label,
                         "plan": plan_label,
                         "count": 0,

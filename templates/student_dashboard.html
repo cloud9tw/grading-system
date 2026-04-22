@@ -19,6 +19,18 @@
 </head>
 
 <body class="bg-gray-50 min-h-screen">
+    {% if session.is_simulating %}
+    <!-- 模擬狀態提示列 -->
+    <div class="bg-purple-600 text-white py-3 px-4 shadow-lg sticky top-0 z-[100] flex justify-between items-center">
+        <div class="flex items-center">
+            <svg class="w-6 h-6 mr-3 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+            <span class="font-bold whitespace-nowrap">模擬模式：正在觀看 【{{ student_info.name }}】 的數據視角</span>
+        </div>
+        <a href="/admin/stop_simulation" class="bg-white text-purple-600 px-4 py-1 rounded-full text-sm font-bold hover:bg-purple-50 transition-colors shadow-sm whitespace-nowrap ml-4">
+            結束模擬並返回後台
+        </a>
+    </div>
+    {% endif %}
 
     <!-- 頂部導覽列 -->
     <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
@@ -83,6 +95,125 @@
                 </div>
             </div>
         </div>
+
+        <!-- EPA 質性回饋待確認面板 (New) -->
+        <div id="epa-feedback-panel" class="hidden animate-bounce-subtle">
+            <div class="bg-white rounded-2xl shadow-xl border-4 border-red-500 overflow-hidden mb-8">
+                <div class="bg-red-500 text-white px-6 py-3 flex items-center gap-2">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                    <h3 class="font-bold text-lg">🔔 待確認的評核回饋 (重要)</h3>
+                </div>
+                <div id="epa-feedback-list" class="p-6 space-y-6 divide-y divide-gray-100">
+                    <!-- 內容由 JS 動態生成 -->
+                </div>
+            </div>
+        </div>
+
+        <style>
+            @keyframes bounce-subtle {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-5px); }
+            }
+            .animate-bounce-subtle { animation: bounce-subtle 3s ease-in-out infinite; }
+        </style>
+
+        <script>
+            // 安全呼叫 logDiag 的輔助函式
+            function safeLog(msg, type = "INFO") {
+                if (typeof logDiag === "function") {
+                    logDiag(msg, type);
+                } else {
+                    console.log(`[${type}] ${msg}`);
+                }
+            }
+
+            async function fetchPendingEPA() {
+                safeLog("Fetching pending EPA feedbacks...");
+                const panel = document.getElementById('epa-feedback-panel');
+                const list = document.getElementById('epa-feedback-list');
+                
+                try {
+                    const res = await fetch('/api/pending_epa_feedbacks');
+                    const result = await res.json();
+                    
+                    if (result.success && result.data && result.data.length > 0) {
+                        list.innerHTML = '';
+                        panel.classList.remove('hidden');
+                        
+                        result.data.forEach(item => {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = "pt-4 first:pt-0";
+                            itemDiv.innerHTML = `
+                                <div class="flex justify-between items-start mb-3">
+                                    <div>
+                                        <span class="bg-red-100 text-red-700 text-xs font-bold px-2 py-0.5 rounded-full mr-2">${item.station}</span>
+                                        <span class="text-gray-500 text-sm font-mono">${item.time}</span>
+                                    </div>
+                                    <span class="text-sm font-medium text-gray-700">教師：${item.teacher}</span>
+                                </div>
+                                <div class="bg-gray-50 border-l-4 border-gray-300 p-4 mb-4 text-gray-800 italic text-sm">
+                                    「${item.comment}」
+                                </div>
+                                <div class="flex flex-col sm:flex-row gap-3">
+                                    <input type="text" id="reply-${item.row_index}" placeholder="對此回饋的回覆 (選填)..." class="flex-1 text-sm border border-gray-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-400 outline-none transition-all">
+                                    <button onclick="confirmFeedback(this, ${item.row_index})" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                        確認完成
+                                    </button>
+                                </div>
+                            `;
+                            list.appendChild(itemDiv);
+                        });
+                        safeLog(`Found ${result.data.length} pending feedbacks.`);
+                    } else {
+                        // 如果沒有資料，必須確實隱藏面板
+                        panel.classList.add('hidden');
+                        safeLog("No pending feedbacks found. Panel hidden.");
+                    }
+                } catch (e) {
+                    console.error("Fetch pending EPA failed:", e);
+                    panel.classList.add('hidden');
+                }
+            }
+
+            async function confirmFeedback(btn, rowIndex) {
+                const originalContent = btn.innerHTML;
+                
+                btn.disabled = true;
+                btn.innerHTML = '<span class="animate-spin mr-1">⌛</span>處理中...';
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+
+                const reply = document.getElementById(`reply-${rowIndex}`).value;
+                
+                try {
+                    const res = await fetch('/api/confirm_epa_feedback', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ row_index: rowIndex, reply: reply })
+                    });
+                    const result = await res.json();
+                    if (result.success) {
+                        // 成功後重新整理
+                        await fetchPendingEPA();
+                    } else {
+                        alert('發生錯誤：' + result.error);
+                        btn.disabled = false;
+                        btn.innerHTML = originalContent;
+                        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+                } catch (e) {
+                    console.error('系統連線失敗', e);
+                    alert('連線失敗，請檢查網路狀態');
+                    btn.disabled = false;
+                    btn.innerHTML = originalContent;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+            }
+            
+            document.addEventListener('DOMContentLoaded', () => {
+                setTimeout(fetchPendingEPA, 1200);
+            });
+        </script>
 
         <!-- 導航標籤頁 (Tabs) -->
         <div class="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-6">
@@ -181,8 +312,19 @@
                 </div>
 
                 <!-- 曲線圖容器 -->
-                <div class="relative h-80 w-full sm:h-96">
+                <div class="relative h-80 w-full sm:h-96 mb-12">
                     <canvas id="growthChart"></canvas>
+                </div>
+
+                <!-- EPA 量性回饋清單 (New) -->
+                <div id="epa-details-section" class="mt-8 border-t border-gray-100 pt-8">
+                    <h4 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                        EPA 詳細評分紀錄與回饋
+                    </h4>
+                    <div id="epa-list-container" class="space-y-4">
+                        <!-- 由 JS 動態生成 -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -596,17 +738,14 @@
             // 強制確保：時間由左向右按時間排序 (Chronological sort)
             records.sort((a, b) => new Date(a.time) - new Date(b.time));
 
-            // 將不連續/空值濾除或當作 0 (這裡選用保留 null 以讓線條中斷或跳過)
+            // 更新曲線圖
             const labels = records.map(r => r.time.split(' ')[0]); // 只取日期
             const dataOPA1 = records.map(r => r.opa1);
             const dataOPA2 = records.map(r => r.opa2);
             const dataOPA3 = records.map(r => r.opa3);
 
             const ctx = document.getElementById('growthChart').getContext('2d');
-
-            if (myChart) {
-                myChart.destroy();
-            }
+            if (myChart) myChart.destroy();
 
             myChart = new Chart(ctx, {
                 type: 'line',
@@ -616,39 +755,36 @@
                         {
                             label: 'OPA1 (檢查前準備)',
                             data: dataOPA1,
-                            borderColor: '#3B82F6', // Blue
+                            borderColor: '#3B82F6',
                             backgroundColor: 'rgba(59, 130, 246, 0.1)',
                             borderWidth: 3,
                             pointBackgroundColor: '#fff',
                             pointBorderColor: '#3B82F6',
                             pointRadius: 4,
-                            pointHoverRadius: 6,
-                            tension: 0.3, // 平滑曲線
+                            tension: 0.3,
                             spanGaps: true
                         },
                         {
                             label: 'OPA2 (造影檢查)',
                             data: dataOPA2,
-                            borderColor: '#10B981', // Green
+                            borderColor: '#10B981',
                             backgroundColor: 'rgba(16, 185, 129, 0.1)',
                             borderWidth: 3,
                             pointBackgroundColor: '#fff',
                             pointBorderColor: '#10B981',
                             pointRadius: 4,
-                            pointHoverRadius: 6,
                             tension: 0.3,
                             spanGaps: true
                         },
                         {
                             label: 'OPA3 (檢查後處置)',
                             data: dataOPA3,
-                            borderColor: '#F59E0B', // Yellow
+                            borderColor: '#F59E0B',
                             backgroundColor: 'rgba(245, 158, 11, 0.1)',
                             borderWidth: 3,
                             pointBackgroundColor: '#fff',
                             pointBorderColor: '#F59E0B',
                             pointRadius: 4,
-                            pointHoverRadius: 6,
                             tension: 0.3,
                             spanGaps: true
                         }
@@ -657,62 +793,70 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
                     plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 20,
-                                font: {
-                                    family: "'Inter', sans-serif",
-                                    size: 13
-                                }
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(17, 24, 39, 0.9)',
-                            titleFont: { size: 14, family: "'Inter', sans-serif" },
-                            bodyFont: { size: 13, family: "'Inter', sans-serif" },
-                            padding: 12,
-                            cornerRadius: 8,
-                            displayColors: true
-                        }
+                        legend: { position: 'top', labels: { usePointStyle: true } }
                     },
                     scales: {
-                        y: {
-                            min: 0,
-                            max: 9, // OPA最高分通常是9吧，如果不同請自行調整
-                            title: {
-                                display: true,
-                                text: '信賴等級分數 (0-9)',
-                                color: '#6B7280',
-                                font: { size: 12, weight: '500' }
-                            },
-                            grid: {
-                                color: '#F3F4F6',
-                                drawBorder: false
-                            },
-                            ticks: {
-                                stepSize: 1
-                            }
-                        },
-                        x: {
-                            grid: {
-                                display: false,
-                                drawBorder: false
-                            },
-                            ticks: {
-                                color: '#6B7280',
-                                font: { size: 12 }
-                            }
-                        }
+                        y: { min: 0, max: 9, ticks: { stepSize: 1 } }
                     }
                 }
             });
+
+            // --- 新增：更新下方詳細紀錄列表 ---
+            const listContainer = document.getElementById('epa-list-container');
+            if (listContainer) {
+                listContainer.innerHTML = '';
+                
+                // 逆序排列 (由新到舊) 以利閱讀
+                const sortedRecords = [...records].sort((a, b) => new Date(b.time) - new Date(a.time));
+                
+                if (sortedRecords.length === 0) {
+                    listContainer.innerHTML = '<p class="text-gray-400 text-sm italic">尚無相關評核紀錄</p>';
+                } else {
+                    sortedRecords.forEach(r => {
+                        const card = document.createElement('div');
+                        card.className = "bg-gray-50 rounded-xl p-4 border border-gray-100 hover:shadow-sm transition-shadow";
+                        
+                        const scoreTag = (val, label) => {
+                            let color = "bg-gray-200 text-gray-700";
+                            if (val >= 7) color = "bg-green-100 text-green-700";
+                            else if (val >= 4) color = "bg-yellow-100 text-yellow-700";
+                            else if (val > 0) color = "bg-red-100 text-red-700";
+                            return `<div class="flex flex-col items-center px-3 py-1 ${color} rounded-lg min-w-[60px]">
+                                <span class="text-[10px] font-bold opacity-70">${label}</span>
+                                <span class="text-lg font-black">${val || '-'}</span>
+                            </div>`;
+                        };
+
+                        card.innerHTML = `
+                            <div class="flex flex-col sm:flex-row justify-between items-start gap-4">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs font-mono text-gray-500">${r.time}</span>
+                                        <span class="text-sm font-bold text-indigo-600">評分教師：${r.teacher}</span>
+                                    </div>
+                                    <div class="text-sm text-gray-700 bg-white p-3 rounded-lg border border-gray-100 italic mb-2">
+                                        ${r.comment ? `「${r.comment}」` : '<span class="text-gray-400">無評語</span>'}
+                                    </div>
+                                    ${r.aspect1 || r.aspect2 ? `
+                                        <div class="flex flex-wrap gap-2">
+                                            ${r.aspect1 ? `<span class="bg-indigo-50 text-indigo-600 text-[10px] px-2 py-0.5 rounded border border-indigo-100">${r.aspect1}</span>` : ''}
+                                            ${r.aspect2 ? `<span class="bg-indigo-50 text-indigo-600 text-[10px] px-2 py-0.5 rounded border border-indigo-100">${r.aspect2}</span>` : ''}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                                <div class="flex gap-2 shrink-0">
+                                    ${scoreTag(r.opa1, 'OPA1')}
+                                    ${scoreTag(r.opa2, 'OPA2')}
+                                    ${scoreTag(r.opa3, 'OPA3')}
+                                </div>
+                            </div>
+                        `;
+                        listContainer.appendChild(card);
+                    });
+                }
+                safeLog(`Updated EPA details list for station: ${station}`);
+            }
         }
 
         async function fetchAttendance() {

@@ -45,9 +45,9 @@
 - **前端**: Vanilla CSS (Premium Dark Mode Design), JavaScript
 - **身份驗證**: Google OAuth 2.0 (Authlib)
 - **資料庫**: 
-  - **Google Sheets**: 主資料儲存 (gspread)
-  - **BigQuery**: 重要事件 Log 備份 (Double-write)
-- **自動化**: Playwright (Headless Chromium)
+  - **BigQuery (核心)**: 主要數據儲存體，驅動學員儀表板、成長曲線與英雄榜。
+  - **Google Sheets (鏡像)**: 臨床評分紀錄備份與設定檔管理，方便管理員隨時閱覽與手動修正。
+- **自動化**: Playwright (CEEP 數據爬蟲)、BigQuery 自動同步排程
 
 ---
 

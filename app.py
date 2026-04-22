@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import threading
 from ceep_scraper import scrape_ceep_all_forms
 from ceep_archiver import archive_to_sheets
+from sync_to_bq import sync_all as sync_to_bq_all
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -853,6 +854,17 @@ def sync_ceep_stream():
                     archive_to_sheets(records, sheet_name=sheet_name)
                     msg_queue.put(f"✅ 已完成 {sheet_name} 同步")
                 
+                # 3. 第三階段：同步至 BigQuery (以 BQ 為核心)
+                msg_queue.put("--- 正在將數據同步至 BigQuery (數據核心) ---")
+                def bq_callback(m):
+                    msg_queue.put(f"   [BQ] {m}")
+                
+                sync_success = sync_to_bq_all(callback=bq_callback)
+                if sync_success:
+                    msg_queue.put("✅ BigQuery 數據已同步完成")
+                else:
+                    msg_queue.put("⚠️ BigQuery 同步過程中有部分異常")
+
                 msg_queue.put({"type": "summary", "data": summary})
                 msg_queue.put({"type": "done", "msg": "所有同步任務已完成！"})
             except Exception as e:
@@ -1143,7 +1155,7 @@ def get_student_stats():
         if bq_client:
             # Use CAST in SQL to handle cases where student_id might be INTEGER in BQ vs STRING in Session
             q = f"""
-                SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum 
+                SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, teacher_name, aspect1, aspect2, comment
                 FROM `{project_id}.grading_data.grading_logs` 
                 WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) 
                 AND (is_deleted = FALSE OR is_deleted IS NULL) 
@@ -1170,9 +1182,13 @@ def get_student_stats():
                     records_by_station[station] = []
                 records_by_station[station].append({
                     'time': r.timestamp.strftime('%Y/%m/%d %H:%M:%S') if r.timestamp else '',
+                    'teacher': r.teacher_name or '未知',
                     'opa1': to_int(r.opa1_sum),
                     'opa2': to_int(r.opa2_sum),
-                    'opa3': to_int(r.opa3_sum)
+                    'opa3': to_int(r.opa3_sum),
+                    'aspect1': r.aspect1 or '',
+                    'aspect2': r.aspect2 or '',
+                    'comment': r.comment or ''
                 })
             logging.info(f"API: Found {row_count} rows for student_id: [{target_id}] in project: [{project_id}]")
             
@@ -1305,14 +1321,78 @@ def admin_portal():
         return render_template('error.html', message='權限不足：此頁面僅限系統管理員進入。'), 403
     
     # 傳遞 Sheets ID 供前端產生連結
-    sheet_main = os.getenv("GOOGLE_SHEET_ID")
+    sheet_id = os.getenv("GOOGLE_SHEET_ID")
     sheet_feedback = "112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w"
     
+    # 取得學員名單供模擬功能使用
+    students = []
+    try:
+        gc = get_gspread_client()
+        doc = gc.open_by_key(sheet_id)
+        sheet_students = doc.worksheet('學員名單')
+        records = safe_get_all_records(sheet_students)
+        for r in records:
+            s_name = str(r.get('姓名', '')).strip()
+            s_id = str(r.get('學生ID', '')).strip()
+            if s_name and s_id:
+                students.append({'name': s_name, 'id': s_id})
+    except Exception as e:
+        print(f"Admin fetch students error: {e}")
+
     return render_template('admin_portal.html', 
                            user=user, 
                            roles=session.get('roles', []),
-                           sheet_main=sheet_main,
-                           sheet_feedback=sheet_feedback)
+                           sheet_main=sheet_id,
+                           sheet_feedback=sheet_feedback,
+                           students=students)
+
+@app.route('/admin/simulate_student', methods=['POST'])
+def simulate_student():
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 403
+    
+    student_id = request.form.get('student_id')
+    if not student_id:
+        return redirect('/admin')
+        
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet_students = doc.worksheet('學員名單')
+        records = safe_get_all_records(sheet_students)
+        
+        target_student = None
+        for r in records:
+            if str(r.get('學生ID', '')).strip() == student_id:
+                target_student = {
+                    'id': str(r.get('學生ID', '')).strip(),
+                    'name': str(r.get('姓名', '')),
+                    'type': str(r.get('學員類別', '')),
+                    'gender': str(r.get('性別', ''))
+                }
+                break
+        
+        if target_student:
+            session['student_info'] = target_student
+            session['current_role'] = 'student'
+            session['is_simulating'] = True
+            return redirect('/')
+        else:
+            return "找不到該學員資料", 404
+            
+    except Exception as e:
+        return f"模擬失敗: {str(e)}", 500
+
+@app.route('/admin/stop_simulation')
+def stop_simulation():
+    if session.get('is_simulating'):
+        session['is_simulating'] = False
+        session['current_role'] = 'teacher'
+        # 清除模擬的學員資訊，重新觸發權限檢查（或者保留原本的，但 current_role 已改）
+        # 為了安全，重新導向回 admin 會觸發一般的 session 檢查
+    return redirect('/admin')
 
 @app.route('/admin/attendance_monitor')
 def admin_attendance_monitor():
@@ -1517,6 +1597,74 @@ def api_admin_attendance_anomalies():
                 'check_out': r.check_out or '未簽退'
             })
         return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/pending_epa_feedbacks')
+def get_pending_epa_feedbacks():
+    user = session.get('user')
+    student_info = session.get('student_info')
+    if not user or not student_info:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    student_id = student_info.get('id')
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet = doc.worksheet('評分記錄')
+        all_vals = sheet.get_all_values()
+        
+        pending = []
+        # Header is at index 0, so rows start at index 1
+        for idx, r in enumerate(all_vals[1:], start=2):
+            # student_id: r[0], comment: r[35], confirmed_time: r[37] (if exists)
+            current_sid = str(r[0]).strip()
+            if current_sid == student_id:
+                # 檢查第 38 欄 (Index 37) 是否已有時間戳記
+                confirmed_time = r[37].strip() if len(r) > 37 else ""
+                if not confirmed_time:
+                    comment = r[35].strip() if len(r) > 35 else ""
+                    if comment: # 只有具備質性回饋的才需要確認
+                        pending.append({
+                            'row_index': idx,
+                            'time': r[4] if len(r) > 4 else "未知時間",
+                            'station': r[2] if len(r) > 2 else "未知站別",
+                            'teacher': r[5] if len(r) > 5 else "未知教師",
+                            'comment': comment
+                        })
+        return jsonify({'success': True, 'data': pending})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/confirm_epa_feedback', methods=['POST'])
+def confirm_epa_feedback():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    row_index = data.get('row_index')
+    reply = data.get('reply', '')
+    
+    if not row_index:
+        return jsonify({'success': False, 'error': 'Missing row index'}), 400
+        
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        sheet = doc.worksheet('評分記錄')
+        
+        import datetime
+        now_ts = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 更新最後兩欄：學員回覆 (37) 與 確認時間 (38)
+        # gspread uses 1-indexed for update_cell(row, col, value)
+        sheet.update_cell(row_index, 37, reply)
+        sheet.update_cell(row_index, 38, now_ts)
+        
+        return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
