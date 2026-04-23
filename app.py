@@ -1173,6 +1173,123 @@ def get_student_schedule():
         logging.error(f"get_student_schedule error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/student/progress_analysis', methods=['GET'])
+def get_student_progress_analysis():
+    """分析學生 28 週的實習達標狀況 (進度對應)"""
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    try:
+        student_info = session.get('student_info', {})
+        student_id = str(student_info.get('id', '')).split('.')[0].strip()
+        student_name = str(student_info.get('name', '')).strip()
+
+        if not student_id:
+            return jsonify({'success': False, 'error': '無法辨識學員 ID'}), 400
+
+        # 1. 取得排程
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        weeks_map = {}
+        try:
+            ws = doc.worksheet(SCHEDULE_SHEET_NAME)
+            records = safe_get_all_records(ws)
+            for rec in records:
+                if str(rec.get('學員ID', '')).strip() == student_id:
+                    for i in range(1, 29):
+                        val = str(rec.get(f'W{i}', '')).strip()
+                        weeks_map[i] = [s.strip() for s in val.split(',') if s.strip()] if val else []
+                    break
+        except Exception:
+            pass
+
+        # 2. 取得所有成績紀錄 (BigQuery)
+        logs = []
+        bq_client, project_id = get_bq_client()
+        if bq_client:
+            q = f"""
+                SELECT station, timestamp
+                FROM `{project_id}.grading_data.grading_logs` 
+                WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) 
+                AND (is_deleted = FALSE OR is_deleted IS NULL)
+            """
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("sid", "STRING", student_id),
+                    bigquery.ScalarQueryParameter("sname", "STRING", student_name)
+                ]
+            )
+            res = bq_client.query(q, job_config=job_config).result()
+            for r in res:
+                # 確保時區處理一致性，BQ 產出通常帶有時區，我們統一轉為 offset-naive 或 local
+                t = r.timestamp
+                if t and t.tzinfo:
+                    t = t.replace(tzinfo=None) + datetime.timedelta(hours=8) # 轉回台北時間基準
+                logs.append({'station': str(r.station), 'time': t})
+
+        # 3. 分析 28 週
+        analysis = []
+        intern_start = get_internship_start()
+        current_week = get_current_intern_week()
+        
+        for i in range(1, 29):
+            week_start = intern_start + datetime.timedelta(days=(i-1)*7)
+            week_end = week_start + datetime.timedelta(days=6)
+            
+            # 轉換為 datetime 以進行比較
+            ws_dt = datetime.datetime.combine(week_start, datetime.time.min)
+            we_dt = datetime.datetime.combine(week_end, datetime.time.max)
+            
+            assigned_stations = weeks_map.get(i, [])
+            
+            # 找出落在本週區間內的紀錄
+            week_logs = [l for l in logs if l['time'] and ws_dt <= l['time'] <= we_dt]
+            
+            # 檢查達標狀況
+            status = 'pending'
+            if i < (current_week or 0):
+                if not assigned_stations:
+                    status = 'success'
+                else:
+                    all_hit = True
+                    for target in assigned_stations:
+                        # 模糊比對站別名稱
+                        hit = any(target in l['station'] for l in week_logs)
+                        if not hit:
+                            all_hit = False
+                            break
+                    status = 'success' if all_hit else 'fail'
+            elif i == current_week:
+                if not assigned_stations:
+                    status = 'success'
+                else:
+                    all_hit = True
+                    for target in assigned_stations:
+                        hit = any(target in l['station'] for l in week_logs)
+                        if not hit:
+                            all_hit = False
+                            break
+                    status = 'success' if all_hit else 'pending'
+            
+            analysis.append({
+                'week': i,
+                'date_range': f"{week_start.strftime('%m/%d')}~{week_end.strftime('%m/%d')}",
+                'stations': assigned_stations,
+                'status': status,
+                'log_count': len(week_logs)
+            })
+
+        return jsonify({
+            'success': True,
+            'analysis': analysis,
+            'current_week': current_week
+        })
+    except Exception as e:
+        logging.error(f"progress_analysis error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     user = session.get('user')

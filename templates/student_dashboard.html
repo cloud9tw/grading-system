@@ -136,6 +136,29 @@
             </div>
         </div>
 
+        <!-- 28 週實習進度追蹤 (New) -->
+        <div id="progress-analysis-section" class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden mb-8 hidden">
+            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                    </svg>
+                    28 週實習進度追蹤
+                </h3>
+                <span class="text-xs text-gray-500 font-medium">即時對應臨床評核紀錄</span>
+            </div>
+            <div class="p-4 overflow-x-auto">
+                <div id="progress-grid" class="flex gap-3 pb-2 min-w-max">
+                    <!-- 動態插入週次方塊 -->
+                </div>
+            </div>
+            <div class="px-6 py-3 bg-gray-50 border-t border-gray-100 flex gap-6 text-xs text-gray-500">
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-green-500"></span> 已達標</div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-red-500"></span> 未達標</div>
+                <div class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-gray-300"></span> 未開始</div>
+            </div>
+        </div>
+
         <!-- EPA 質性回饋待確認面板 (New) -->
 
         <div id="epa-feedback-panel" class="hidden animate-bounce-subtle">
@@ -1170,8 +1193,65 @@
             }
         }
 
-        // 頁面載入時初始化進度卡片
+        async function fetchProgressAnalysis() {
+            logDiag("Fetching progress analysis...");
+            try {
+                const res = await fetch('/api/student/progress_analysis');
+                const data = await res.json();
+                if (!data.success) return;
+
+                const section = document.getElementById('progress-analysis-section');
+                const grid = document.getElementById('progress-grid');
+                section.classList.remove('hidden');
+                grid.innerHTML = '';
+
+                data.analysis.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "flex flex-col items-center gap-1 shrink-0";
+                    
+                    let statusClass = "bg-gray-50 text-gray-400 border-gray-100";
+                    let icon = "⚪";
+                    if (item.status === 'success') {
+                        statusClass = "bg-green-100 text-green-700 border-green-200";
+                        icon = "✅";
+                    } else if (item.status === 'fail') {
+                        statusClass = "bg-red-100 text-red-700 border-red-200";
+                        icon = "❌";
+                    } else if (item.week === data.current_week) {
+                        statusClass = "ring-2 ring-indigo-500 bg-white text-indigo-700 border-indigo-200 shadow-md scale-105 z-10";
+                        icon = item.log_count > 0 ? "⏳" : "📝";
+                    }
+
+                    div.innerHTML = `
+                        <div class="text-[10px] font-bold ${item.week === data.current_week ? 'text-indigo-600' : 'text-gray-400'} uppercase">${item.date_range}</div>
+                        <div class="w-14 h-16 rounded-xl border flex flex-col items-center justify-center transition-all ${statusClass} relative group cursor-help">
+                            <span class="text-[10px] font-black">W${item.week}</span>
+                            <span class="text-base mt-0.5">${icon === '⚪' ? '' : icon}</span>
+                            
+                            <!-- Tooltip -->
+                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 p-4 bg-gray-900 text-white text-[11px] rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-[100] shadow-2xl leading-relaxed">
+                                <p class="font-bold border-b border-gray-700 pb-2 mb-2 flex justify-between">
+                                    <span>第 ${item.week} 週評核狀況</span>
+                                    <span class="text-gray-400">${item.date_range}</span>
+                                </p>
+                                <p class="text-gray-300">預定站別: <span class="text-white">${item.stations.length ? item.stations.join(', ') : '未排定'}</span></p>
+                                <p class="text-gray-300">目前紀錄: <span class="text-white">${item.log_count} 筆評分</span></p>
+                                <p class="mt-2 text-indigo-300 font-medium">${item.status === 'success' ? '✨ 恭喜達標！' : item.status === 'fail' ? '⚠️ 缺漏紀錄，請盡速補齊' : '🕒 實習進行中'}</p>
+                                <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
+                            </div>
+                        </div>
+                    `;
+                    grid.appendChild(div);
+                });
+                logDiag("Progress analysis grid rendered.");
+            } catch (e) {
+                logDiag(`Progress analysis fetch error: ${e.message}`, "ERROR");
+            }
+        }
+
+        // 頁面載入時初始化
         fetchSchedule();
+        fetchProgressAnalysis();
     </script>
 
 </body>
