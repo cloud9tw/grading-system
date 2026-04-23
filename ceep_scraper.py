@@ -20,7 +20,11 @@ async def scrape_ceep_all_forms(callback=None):
     Returns: (final_results, task_summary)
     """
     async def report(msg):
-        print(msg)
+        try:
+            print(msg)
+        except UnicodeEncodeError:
+            print(msg.encode('utf-8', errors='replace').decode('utf-8', errors='replace'))
+        
         if callback:
             await callback(msg)
 
@@ -35,6 +39,7 @@ async def scrape_ceep_all_forms(callback=None):
     tasks = [
         (f"{N} 學年度", f"{N}學年醫事放射實習"),        # 實習學生 (目前學年)
         (f"{N} 學年度", f"醫事放射PGY {N}-影醫"),      # PGY (目前學年)
+        (f"{N-1} 學年度", f"醫事放射PGY {N-1}-影醫"),    # PGY (去年)
         (f"{N} 學年度", f"影像醫學部新進放射師-{N}年"), # 新進人員 (今年)
         (f"{N-1} 學年度", f"影像醫學部新進放射師-{N-1}年") # 新進人員 (去年)
     ]
@@ -87,7 +92,12 @@ async def scrape_ceep_all_forms(callback=None):
             for year_label, plan_label in tasks:
                 # 根據身份動態決定教學記錄表單名稱
                 if sheet_name == "CEEP_TeachingRecord":
-                    current_form_label = "醫事放射-教學記錄(實習生)" if "實習" in plan_label else "醫事放射-PGY教學記錄"
+                    if "實習" in plan_label:
+                        current_form_label = "醫事放射-教學記錄(實習生)"
+                    elif "PGY" in plan_label:
+                        current_form_label = "醫事放射-PGY教學記錄"
+                    else:
+                        current_form_label = "醫事放射-教學記錄" # Fallback for others
                 else:
                     current_form_label = form_label
 
@@ -100,13 +110,18 @@ async def scrape_ceep_all_forms(callback=None):
                 try:
                     await page.wait_for_selector('select[name="batch_year[]"]', timeout=5000)
                     
-                    # 1. 選取學年度
-                    await page.select_option('select[name="batch_year[]"]', label=year_label)
+                    # 1. 選取學年度 (手動尋找包含年度數字的選項，避免 Pattern 序列化問題)
+                    year_num = year_label.split(" ")[0] # 提取 "114"
+                    year_options = await page.eval_on_selector('select[name="batch_year[]"]', 
+                        f"(el, yr) => Array.from(el.options).filter(o => o.text.includes(yr)).map(o => o.value)", year_num)
+                    if year_options:
+                        await page.select_option('select[name="batch_year[]"]', value=year_options)
                     await page.wait_for_timeout(800)
                     
                     # 2. 選取職類
                     await page.select_option('select[name="title_id"]', label="醫事放射職類")
                     await page.wait_for_timeout(1500)
+
                     
                     # 3. 選取計畫
                     try:
