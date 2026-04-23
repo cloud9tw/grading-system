@@ -28,28 +28,36 @@ async def scrape_ceep_all_forms(callback=None):
         if callback:
             await callback(msg)
 
+    # ==========================================
+    # 1. 系統參數配置 (在此修改計畫或表單名稱)
+    # ==========================================
     import datetime
     now = datetime.datetime.now()
-    if now.month >= 7:
-        N = now.year - 1911
-    else:
-        N = now.year - 1912
+    # 計算學年度 (7月為界)
+    N = (now.year - 1911) if now.month >= 7 else (now.year - 1912)
     
-    # 定義抓取任務 (學年度, 計畫名稱)
-    tasks = [
+    # 抓取表單清單 (對應 Google Sheets 分頁名稱 : CEEP 表單完整名稱)
+    TARGET_FORMS = {
+        "CEEP_DOPS": "醫學影像技術學-操作技能直接觀察(DOPS)評量表",
+        "CEEP_MiniCEX": "醫學影像技術學-迷你臨床演練評量(Mini-CEX)評量表",
+        "CEEP_TeachingRecord": "醫事放射-教學記錄" # 此為基礎名稱，會根據計畫動態調整
+    }
+
+    # 教學記錄表單的特殊命名規則
+    TEACHING_FORM_INTERN = "醫事放射-教學記錄(實習生)"
+    TEACHING_FORM_PGY = "醫事放射-PGY教學記錄"
+    TEACHING_FORM_DEFAULT = "醫事放射-教學記錄"
+
+    # 抓取任務定義 (學年度標籤, 計畫標籤)
+    SCRAPE_TASKS = [
         (f"{N} 學年度", f"{N}學年醫事放射實習"),        # 實習學生 (目前學年)
         (f"{N} 學年度", f"醫事放射PGY {N}-影醫"),      # PGY (目前學年)
         (f"{N-1} 學年度", f"醫事放射PGY {N-1}-影醫"),    # PGY (去年)
         (f"{N} 學年度", f"影像醫學部新進放射師-{N}年"), # 新進人員 (今年)
         (f"{N-1} 學年度", f"影像醫學部新進放射師-{N-1}年") # 新進人員 (去年)
     ]
+    # ==========================================
 
-    targets = {
-        "CEEP_DOPS": "醫學影像技術學-操作技能直接觀察(DOPS)評量表",
-        "CEEP_MiniCEX": "醫學影像技術學-迷你臨床演練評量(Mini-CEX)評量表",
-        "CEEP_TeachingRecord": "醫事放射-教學記錄"
-    }
-    
     final_results = {}
     task_summary = [] # 用於回傳給前端顯示
 
@@ -85,19 +93,19 @@ async def scrape_ceep_all_forms(callback=None):
         
         await report("✅ 登入成功，開始抓取流程")
 
-        for sheet_name, form_label in targets.items():
+        for sheet_name, form_label in TARGET_FORMS.items():
             await report(f"➔ 準備抓取表單: {sheet_name}")
             all_records_for_form = []
 
-            for year_label, plan_label in tasks:
+            for year_label, plan_label in SCRAPE_TASKS:
                 # 根據身份動態決定教學記錄表單名稱
                 if sheet_name == "CEEP_TeachingRecord":
                     if "實習" in plan_label:
-                        current_form_label = "醫事放射-教學記錄(實習生)"
+                        current_form_label = TEACHING_FORM_INTERN
                     elif "PGY" in plan_label:
-                        current_form_label = "醫事放射-PGY教學記錄"
+                        current_form_label = TEACHING_FORM_PGY
                     else:
-                        current_form_label = "醫事放射-教學記錄" # Fallback for others
+                        current_form_label = TEACHING_FORM_DEFAULT
                 else:
                     current_form_label = form_label
 
