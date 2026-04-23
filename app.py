@@ -59,6 +59,50 @@ def safe_get_all_records(worksheet):
 
 from credentials_utils import get_bq_client, get_gspread_client
 
+@app.route('/api/health')
+def health_check():
+    """系統健康檢查 API：診斷環境變數、Google Sheets 與 BigQuery 連線"""
+    status = {
+        'status': 'healthy',
+        'timestamp': datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'services': {
+            'environment': 'ok',
+            'google_sheets': 'pending',
+            'bigquery': 'pending'
+        }
+    }
+    
+    # 1. 檢查關鍵環境變數
+    required = ["GOOGLE_SHEET_ID", "SENDER_EMAIL"]
+    missing = [e for e in required if not os.getenv(e)]
+    if missing:
+        status['status'] = 'degraded'
+        status['services']['environment'] = f'Missing: {", ".join(missing)}'
+
+    # 2. 檢查 Google Sheets
+    try:
+        gc = get_gspread_client()
+        sid = os.getenv("GOOGLE_SHEET_ID")
+        gc.open_by_key(sid)
+        status['services']['google_sheets'] = 'ok'
+    except Exception as e:
+        status['status'] = 'unhealthy'
+        status['services']['google_sheets'] = f"Connection Failed: {str(e)}"
+
+    # 3. 檢查 BigQuery
+    try:
+        client, _ = get_bq_client()
+        if client:
+            status['services']['bigquery'] = 'ok'
+        else:
+            status['services']['bigquery'] = 'Initialization Failed'
+    except Exception as e:
+        if status['status'] == 'healthy': status['status'] = 'degraded'
+        status['services']['bigquery'] = str(e)
+
+    code = 200 if status['status'] != 'unhealthy' else 503
+    return jsonify(status), code
+
 @app.route('/')
 def index():
     user = session.get('user')
@@ -1379,7 +1423,6 @@ def get_config():
                             'body_parts': {},
                             'aspects': {}
                         }
-                    
                     student_stats[sid]['stations'][stn]['count'] += 1
                     
                     if bpart:
@@ -1389,10 +1432,9 @@ def get_config():
                     
                     for k, v in rec.items():
                         if '面向選擇' in str(k) and str(v).strip():
-                            import re
                             m = re.match(r'^\d+', str(v).strip())
                             if m:
-                                asp_num = m.group()
+                                asp_num = m.group(0)
                                 if asp_num not in student_stats[sid]['stations'][stn]['aspects']:
                                     student_stats[sid]['stations'][stn]['aspects'][asp_num] = 0
                                 student_stats[sid]['stations'][stn]['aspects'][asp_num] += 1
@@ -1409,91 +1451,83 @@ def get_config():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/student_stats', methods=['GET'])
+def get_student_stats():
+    user = session.get('user')
+    if not user:
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    if session.get('current_role') != 'student':
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    student_info = session.get('student_info')
+    if not student_info:
+        return jsonify({'success': False, 'error': 'No info'}), 400
+    try:
+        target_id = str(student_info.get('id', '')).split('.')[0].strip()
+        target_name = str(student_info.get('name', '')).strip()
+        records_by_station = {}
+        bq_client, project_id = get_bq_client()
+        if bq_client:
+            q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, teacher_name, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+            job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("sid", "STRING", target_id), bigquery.ScalarQueryParameter("sname", "STRING", target_name)])
+            res = bq_client.query(q, job_config=job_config).result(timeout=20)
+            def to_int(v):
+                try: return int(v)
+                except: return None
+            for r in res:
+                stn = str(r.station or 'Unknown').strip()
+                if stn not in records_by_station: records_by_station[stn] = []
+                records_by_station[stn].append({
+                    'time': r.timestamp.strftime('%Y/%m/%d %H:%M:%S') if r.timestamp else '',
+                    'teacher': r.teacher_name or '未知',
+                    'opa1': to_int(r.opa1_sum), 'opa2': to_int(r.opa2_sum), 'opa3': to_int(r.opa3_sum),
+                    'aspect1': r.aspect1 or '', 'aspect2': r.aspect2 or '', 'comment': r.comment or ''
+                })
+            return jsonify({'success': True, 'data': records_by_station})
+        return jsonify({'success': False, 'error': 'BQ client missing'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/submit_grade', methods=['POST'])
 def submit_grade():
     user = session.get('user')
     if not user:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-    
     data = request.json
     try:
         gc = get_gspread_client()
-        if not gc:
-            return jsonify({'success': False, 'error': 'Google Sheets backend not configured.'}), 500
-            
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         sheet = doc.worksheet('評分記錄')
-        
         import datetime
         timestamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
         teacher_email = user.get('email', '')
-        teacher_name = teacher_email # default
-        
-        # 查詢教師名單中的姓名
+        teacher_name = teacher_email
         try:
             sheet_teachers = doc.worksheet('教師名單')
             teachers_data = safe_get_all_records(sheet_teachers)
             for rec in teachers_data:
-                # 欄位： 教師_Email, 教師姓名
-                t_email = str(rec.get('教師_Email', '')).strip().lower()
-                if t_email == teacher_email.lower():
-                    n = str(rec.get('教師姓名', '')).strip()
-                    if n:
-                        teacher_name = n
+                if str(rec.get('教師_Email', '')).strip().lower() == teacher_email.lower():
+                    teacher_name = str(rec.get('教師姓名', '')).strip() or teacher_name
                     break
-        except Exception as e:
-            print("Error loading teacher names:", e)
-        
-        # 收集資料
+        except: pass
         student_id = data.get('student_id', '')
         student_name = data.get('student_name', '')
         station = data.get('station', '')
         body_part = data.get('body_part', '')
-        
-        # 總和評比
         opa1_sum = data.get('opa1_sum', '')
         opa2_sum = data.get('opa2_sum', '')
         opa3_sum = data.get('opa3_sum', '')
-        
-        # 細項 1~8 (陣列)
-        opa1_items = data.get('opa1_items', [''] * 8)
-        opa2_items = data.get('opa2_items', [''] * 8)
-        opa3_items = data.get('opa3_items', [''] * 8)
-        
-        # 如果長度不足 8，補齊空白
-        opa1_items = (opa1_items + [''] * 8)[:8]
-        opa2_items = (opa2_items + [''] * 8)[:8]
-        opa3_items = (opa3_items + [''] * 8)[:8]
-        
+        opa1_items = (data.get('opa1_items', [''] * 8) + [''] * 8)[:8]
+        opa2_items = (data.get('opa2_items', [''] * 8) + [''] * 8)[:8]
+        opa3_items = (data.get('opa3_items', [''] * 8) + [''] * 8)[:8]
         aspect1 = data.get('aspect1', '')
         aspect2 = data.get('aspect2', '')
         comment = data.get('comment', '')
-        
-        row = [
-            student_id,
-            student_name,
-            station,
-            body_part,
-            timestamp,
-            teacher_name,
-            opa1_sum,
-            opa2_sum,
-            opa3_sum
-        ] + opa1_items + opa2_items + opa3_items + [
-            aspect1,
-            aspect2,
-            comment
-        ]
-        # 強制告訴 Google 試算表從整張表的 A1 欄開始往下當作新增基準
-        # 避免 Google 的「自動探測表格」功能發生向右位移（例如跳過前 32 欄）的 BUG
+        row = [student_id, student_name, station, body_part, timestamp, teacher_name, opa1_sum, opa2_sum, opa3_sum] + opa1_items + opa2_items + opa3_items + [aspect1, aspect2, comment]
         sheet.append_row(row, table_range="A1")
-        
-        # BQ Double-Write
         try:
             bq_client, project_id = get_bq_client()
             if bq_client:
-                # 重新解析 ISO Timestamp
                 dt_iso = datetime.datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S").isoformat()
                 grade_insert = [{
                     'student_id': student_id, 'student_name': student_name, 'station': station,
@@ -1502,109 +1536,163 @@ def submit_grade():
                     'opa1_items': opa1_items, 'opa2_items': opa2_items, 'opa3_items': opa3_items,
                     'aspect1': aspect1, 'aspect2': aspect2, 'comment': comment
                 }]
-                errors = bq_client.insert_rows_json(f"{project_id}.grading_data.grading_logs", grade_insert)
-                if errors: print("BQ Grading Insert Error:", errors)
-        except Exception as e:
-            print("BQ Insert Error (Grading):", e)
-            
+                bq_client.insert_rows_json(f"{project_id}.grading_data.grading_logs", grade_insert)
+        except: pass
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/student_stats', methods=['GET'])
-def get_student_stats():
-    user = session.get('user')
-    if not user:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-        
-    if session.get('current_role') != 'student':
-        return jsonify({'success': False, 'error': 'Forbidden: Not acting as student'}), 403
-        
-    student_info = session.get('student_info')
-    if not student_info:
-        return jsonify({'success': False, 'error': 'No student info found.'}), 400
-        
+def aggregate_student_report_data(doc, bq_client, project_id):
+    import time
+    ws_students = doc.worksheet('學員名單')
+    student_records = safe_get_all_records(ws_students)
+    time.sleep(1) 
+    hours_map = {}
     try:
-        # Step 1: Normalize Target ID from session (Ensure it's a clean string)
-        target_id = str(student_info.get('id', '')).split('.')[0].strip()
-        target_name = str(student_info.get('name', '')).strip()
-        
-        import logging
-        logging.info(f"API: [Stats] Fetching for ID: [{target_id}], Name: [{target_name}]")
-        
-        records_by_station = {}
-        bq_client, project_id = get_bq_client()
-        
-        if bq_client:
-            # Use CAST in SQL to handle cases where student_id might be INTEGER in BQ vs STRING in Session
-            q = f"""
-                SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, teacher_name, aspect1, aspect2, comment
-                FROM `{project_id}.grading_data.grading_logs` 
-                WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) 
-                AND (is_deleted = FALSE OR is_deleted IS NULL) 
-                ORDER BY timestamp ASC
-            """
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("sid", "STRING", target_id),
-                    bigquery.ScalarQueryParameter("sname", "STRING", target_name)
-                ]
-            )
-            query_job = bq_client.query(q, job_config=job_config)
-            res = query_job.result(timeout=20) 
-            
-            row_count = 0
-            def to_int(v):
-                try: return int(v)
-                except: return None
-                
-            for r in res:
-                row_count += 1
-                station = str(r.station or 'Unknown').strip()
-                if station not in records_by_station:
-                    records_by_station[station] = []
-                records_by_station[station].append({
-                    'time': r.timestamp.strftime('%Y/%m/%d %H:%M:%S') if r.timestamp else '',
-                    'teacher': r.teacher_name or '未知',
-                    'opa1': to_int(r.opa1_sum),
-                    'opa2': to_int(r.opa2_sum),
-                    'opa3': to_int(r.opa3_sum),
-                    'aspect1': r.aspect1 or '',
-                    'aspect2': r.aspect2 or '',
-                    'comment': r.comment or ''
-                })
-            logging.info(f"API: Found {row_count} rows for student_id: [{target_id}] in project: [{project_id}]")
-            
-            # Step 2: Fetch Course Check-in Hours
-            course_hours = 0.0
+        ws_attendance = doc.worksheet('上下班打卡記錄')
+        attendance_records = safe_get_all_records(ws_attendance)
+        time.sleep(1)
+        for r in attendance_records:
+            name = str(r.get('學生', '')).strip()
+            if not name: continue
             try:
-                q_course = f"""
-                    SELECT SUM(hours) as total 
-                    FROM `{project_id}.grading_data.course_checkins` 
-                    WHERE CAST(student_id AS STRING) = @sid
-                """
-                job_config_c = bigquery.QueryJobConfig(
-                    query_parameters=[bigquery.ScalarQueryParameter("sid", "STRING", target_id)]
-                )
-                res_c = bq_client.query(q_course, job_config=job_config_c).result()
-                for r_c in res_c:
-                    course_hours = float(r_c.total or 0.0)
-            except Exception as e:
-                logging.error(f"Error fetching course hours: {e}")
+                t_in = datetime.datetime.strptime(r.get('簽到時間', ''), "%Y-%m-%d %H:%M:%S")
+                t_out = datetime.datetime.strptime(r.get('簽退時間', ''), "%Y-%m-%d %H:%M:%S")
+                hours_map[name] = hours_map.get(name, 0) + (t_out - t_in).total_seconds() / 3600.0
+            except: continue
+    except: pass
+    opa_stats = {}
+    if bq_client:
+        q = f"SELECT student_name, station, AVG(opa1_sum + opa2_sum + opa3_sum) as total_avg, COUNT(*) as count FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL GROUP BY student_name, station"
+        res = bq_client.query(q).result()
+        for r in res:
+            name = str(r.student_name).strip()
+            if name not in opa_stats: opa_stats[name] = {}
+            opa_stats[name][r.station] = {'avg': round(r.total_avg or 0, 2), 'count': r.count}
+    
+    def clean_ceep_name(raw_name):
+        import re
+        m = re.search(r'^(.+?)\s*[（\(]', str(raw_name))
+        return m.group(1).strip() if m else str(raw_name).strip()
+    
+    dops_stats = {}
+    try:
+        ws_dops = doc.worksheet('CEEP_DOPS')
+        dops_data = ws_dops.get_all_values()
+        time.sleep(1)
+        if len(dops_data) > 1:
+            for r in dops_data[1:]:
+                if len(r) < 27: continue # DOPS 預期至少 27 欄
+                name = clean_ceep_name(r[2])
+                stn = r[11].strip()
+                try:
+                    score = float(r[26]) # 抓取索引 26 的分數
+                    feedback = r[23].strip() # 抓取索引 23 的回饋
+                    if name not in dops_stats: dops_stats[name] = {}
+                    if stn not in dops_stats[name]: dops_stats[name][stn] = {'scores': [], 'feedbacks': []}
+                    dops_stats[name][stn]['scores'].append(score)
+                    if feedback: dops_stats[name][stn]['feedbacks'].append(feedback)
+                except: continue
+    except: pass
 
-            return jsonify({
-                'success': True, 
-                'data': records_by_station, 
-                'count': row_count,
-                'course_hours': course_hours
-            })
-        else:
-            logging.error("API: BigQuery client could not be initialized (likely missing credentials.json)")
-            return jsonify({'success': False, 'error': 'BigQuery client missing'}), 500
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({'success': False, 'error': str(e)}), 500
+    mcex_stats = {}
+    try:
+        ws_mcex = doc.worksheet('CEEP_MiniCEX')
+        mcex_data = ws_mcex.get_all_values()
+        time.sleep(1)
+        if len(mcex_data) > 1:
+            for r in mcex_data[1:]:
+                if len(r) < 22: continue
+                name = clean_ceep_name(r[2])
+                import re
+                station_match = re.search(r'^(.+?)-', r[0])
+                stn = station_match.group(1).strip() if station_match else r[10].strip()
+                try:
+                    score = float(r[21]) # Mini-CEX 抓取索引 21 的分數
+                    feedback = r[20].strip() # 抓取索引 20 的回饋
+                    if name not in mcex_stats: mcex_stats[name] = {}
+                    if stn not in mcex_stats[name]: mcex_stats[name][stn] = {'scores': [], 'feedbacks': []}
+                    mcex_stats[name][stn]['scores'].append(score)
+                    if feedback: mcex_stats[name][stn]['feedbacks'].append(feedback)
+                except: continue
+    except: pass
+
+    # 5. 進度達標率判定邏輯
+    progress_map = {}
+    try:
+        ws_sched = doc.worksheet(SCHEDULE_SHEET_NAME)
+        sched_records = safe_get_all_records(ws_sched)
+        intern_start = get_internship_start()
+        current_week = get_current_intern_week() or 28
+        
+        q_all = f"SELECT student_name, station, timestamp FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+        all_logs = list(bq_client.query(q_all).result())
+        
+        for rec in sched_records:
+            s_name = str(rec.get('學員姓名', '')).strip()
+            if not s_name: continue
+            student_logs = [l for l in all_logs if str(l.student_name).strip() == s_name]
+            success_weeks = 0
+            total_relevant_weeks = min(current_week, 28)
+            for i in range(1, total_relevant_weeks + 1):
+                w_start = intern_start + datetime.timedelta(days=(i-1)*7)
+                w_end = w_start + datetime.timedelta(days=6)
+                ws_dt = datetime.datetime.combine(w_start, datetime.time.min)
+                we_dt = datetime.datetime.combine(w_end, datetime.time.max)
+                val = str(rec.get(f'W{i}', '')).strip()
+                assigned = [s.strip() for s in val.split(',') if s.strip()]
+                if not assigned:
+                    success_weeks += 1; continue
+                week_logs = [l for l in student_logs if ws_dt <= l.timestamp.replace(tzinfo=None) + datetime.timedelta(hours=8) <= we_dt]
+                all_hit = True
+                for target in assigned:
+                    if not any(target in str(l.station) for l in week_logs):
+                        all_hit = False; break
+                if all_hit: success_weeks += 1
+            rate = (success_weeks/total_relevant_weeks)*100 if total_relevant_weeks > 0 else 0
+            progress_map[s_name] = f"{round(rate, 1)}%"
+    except: pass
+
+    # 6. 彙整結果 (Wide Format)
+    all_stations = set()
+    for s_map in opa_stats.values(): all_stations.update(s_map.keys())
+    for s_map in dops_stats.values(): all_stations.update(s_map.keys())
+    for s_map in mcex_stats.values(): all_stations.update(s_map.keys())
+    sorted_stations = sorted(list(all_stations))
+
+    rows = []
+    for s in student_records:
+        name = str(s.get('姓名', '')).strip()
+        if not name: continue
+        
+        row = {
+            '學員ID': s.get('學生ID', ''),
+            '姓名': name,
+            '學員類別': s.get('學員類別', ''),
+            '實習總時數': round(hours_map.get(name, 0), 1),
+            '進度達標率': progress_map.get(name, '0%')
+        }
+        
+        for stn in sorted_stations:
+            # OPA 數據 (原有邏輯)
+            opa = opa_stats.get(name, {}).get(stn, {'avg': '-', 'count': 0})
+            row[f'[{stn}] OPA平均'] = opa['avg']
+            row[f'[{stn}] OPA筆數'] = opa['count']
+            
+            # DOPS 數據 (更新後)
+            d_data = dops_stats.get(name, {}).get(stn, {'scores': [], 'feedbacks': []})
+            d_scores = d_data['scores']
+            row[f'[{stn}] DOPS平均'] = round(sum(d_scores)/len(d_scores), 2) if d_scores else '-'
+            row[f'[{stn}] DOPS回饋'] = " | ".join(d_data['feedbacks']) if d_data['feedbacks'] else ''
+            
+            # Mini-CEX 數據 (更新後)
+            m_data = mcex_stats.get(name, {}).get(stn, {'scores': [], 'feedbacks': []})
+            m_scores = m_data['scores']
+            row[f'[{stn}] MiniCEX平均'] = round(sum(m_scores)/len(m_scores), 2) if m_scores else '-'
+            row[f'[{stn}] MiniCEX回饋'] = " | ".join(m_data['feedbacks']) if m_data['feedbacks'] else ''
+            
+        rows.append(row)
+    return rows
 
 @app.route('/api/admin/export_excel', methods=['GET'])
 def admin_export_excel():
@@ -1617,108 +1705,10 @@ def admin_export_excel():
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
-        
-        # 1. 取得學員基本資料
-        ws_students = doc.worksheet('學員名單')
-        student_records = safe_get_all_records(ws_students)
-        
-        # 2. 取得打卡記錄計算總時數
-        try:
-            ws_attendance = doc.worksheet('上下班打卡記錄')
-            attendance_records = safe_get_all_records(ws_attendance)
-            hours_map = {}
-            for r in attendance_records:
-                s_name = str(r.get('學生', '')).strip()
-                if not s_name: continue
-                try:
-                    t_in = datetime.datetime.strptime(r.get('簽到時間', ''), "%Y-%m-%d %H:%M:%S")
-                    t_out = datetime.datetime.strptime(r.get('簽退時間', ''), "%Y-%m-%d %H:%M:%S")
-                    duration = (t_out - t_in).total_seconds() / 3600.0
-                    hours_map[s_name] = hours_map.get(s_name, 0) + duration
-                except: continue
-        except:
-            hours_map = {}
-
-        # 3. 取得 OPA 成績 (BigQuery)
-        opa_map = {}
         bq_client, project_id = get_bq_client()
-        if bq_client:
-            q = f"""
-                SELECT student_name, 
-                       AVG(opa1_sum) as avg1, AVG(opa2_sum) as avg2, AVG(opa3_sum) as avg3,
-                       COUNT(*) as count
-                FROM `{project_id}.grading_data.grading_logs` 
-                WHERE is_deleted = FALSE OR is_deleted IS NULL
-                GROUP BY student_name
-            """
-            res = bq_client.query(q).result()
-            for r in res:
-                name = str(r.student_name).strip()
-                opa_map[name] = {
-                    'avg1': round(r.avg1 or 0, 2),
-                    'avg2': round(r.avg2 or 0, 2),
-                    'avg3': round(r.avg3 or 0, 2),
-                    'count': r.count
-                }
-
-        # 4. 取得排程與計算進度率 (進度對應邏輯)
-        progress_map = {}
-        try:
-            ws_sched = doc.worksheet(SCHEDULE_SHEET_NAME)
-            sched_records = safe_get_all_records(ws_sched)
-            intern_start = get_internship_start()
-            current_week = get_current_intern_week() or 28
-            
-            q_all = f"SELECT student_name, station, timestamp FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
-            all_logs = list(bq_client.query(q_all).result())
-            
-            for rec in sched_records:
-                s_name = str(rec.get('學員姓名', '')).strip()
-                if not s_name: continue
-                
-                student_logs = [l for l in all_logs if str(l.student_name).strip() == s_name]
-                success_weeks = 0
-                total_relevant_weeks = min(current_week, 28)
-                
-                for i in range(1, total_relevant_weeks + 1):
-                    w_start = intern_start + datetime.timedelta(days=(i-1)*7)
-                    w_end = w_start + datetime.timedelta(days=6)
-                    ws_dt = datetime.datetime.combine(w_start, datetime.time.min)
-                    we_dt = datetime.datetime.combine(w_end, datetime.time.max)
-                    
-                    val = str(rec.get(f'W{i}', '')).strip()
-                    assigned = [s.strip() for s in val.split(',') if s.strip()]
-                    if not assigned:
-                        success_weeks += 1; continue
-                    
-                    week_logs = [l for l in student_logs if ws_dt <= l.timestamp.replace(tzinfo=None) + datetime.timedelta(hours=8) <= we_dt]
-                    all_hit = True
-                    for target in assigned:
-                        if not any(target in str(l.station) for l in week_logs):
-                            all_hit = False; break
-                    if all_hit: success_weeks += 1
-                
-                rate = (success_weeks/total_relevant_weeks)*100 if total_relevant_weeks > 0 else 0
-                progress_map[s_name] = f"{round(rate, 1)}%"
-        except: pass
-
-        # 5. 彙整資料
-        final_data = []
-        for s in student_records:
-            name = str(s.get('姓名', '')).strip()
-            if not name: continue
-            opa = opa_map.get(name, {'avg1': 0, 'avg2': 0, 'avg3': 0, 'count': 0})
-            final_data.append({
-                '學員ID': s.get('學生ID', ''),
-                '姓名': name,
-                '學員類別': s.get('學員類別', ''),
-                '實習總時數': round(hours_map.get(name, 0), 1),
-                'OPA1平均': opa['avg1'],
-                'OPA2平均': opa['avg2'],
-                'OPA3平均': opa['avg3'],
-                '總評核筆數': opa['count'],
-                '進度達標率': progress_map.get(name, '0%')
-            })
+        
+        # 呼叫統計函式
+        final_data = aggregate_student_report_data(doc, bq_client, project_id)
             
         df = pd.DataFrame(final_data)
         output = io.BytesIO()

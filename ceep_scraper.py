@@ -140,54 +140,82 @@ async def scrape_ceep_all_forms(callback=None):
                         await page.select_option('select[name="batch_id"]', label=plan_label)
                     await page.wait_for_timeout(1000)
                     
-                    # 4. 選取表單名稱
-                    await page.select_option('select[name="sf_id"]', label=current_form_label)
-
-                    # Click Search
-                    await page.click('.btn-query')
-                    await page.wait_for_load_state("networkidle")
-                    await page.wait_for_timeout(3000)
-
-                    # Extract rows
-                    rows = await page.query_selector_all('table.table-bordered tbody tr')
-                    task_count = 0
-                    for row in rows:
-                        cols = await row.query_selector_all('td')
-                        if len(cols) < 5: continue
-                        
-                        case_name = await cols[0].inner_text()
-                        start_time = await cols[1].inner_text()
-                        student_name = await cols[2].inner_text()
-                        submit_time = await cols[3].inner_text()
-                        
-                        scores = {}
-                        for i in range(4, len(cols)):
-                            col = cols[i]
-                            txt = (await col.inner_text()).strip()
-                            
-                            if not txt:
-                                popover_content = await col.get_attribute('data-content')
-                                if popover_content:
-                                    txt = clean_html(popover_content)
-                                else:
-                                    link = await col.query_selector('a')
-                                    if link:
-                                        href = await link.get_attribute('href')
-                                        link_text = (await link.inner_text()).strip()
-                                        txt = link_text if link_text else href
-                            
-                            scores[f"item_{i-3}"] = txt
-                        
-                        all_records_for_form.append({
-                            "student_name": student_name.strip(),
-                            "submit_time": submit_time.strip(),
-                            "case_name": case_name.strip(),
-                            "start_time": f"[{plan_label}] {start_time.strip()}", # 標記計畫來源
-                            "scores": scores
-                        })
-                        task_count += 1
+                    # 4. 選取表單名稱 (處理多單位重名問題)
+                    # 取得所有名稱符合的選項值
+                    form_values = await page.eval_on_selector('select[name="sf_id"]', 
+                        f"(el, lbl) => Array.from(el.options).filter(o => o.text.trim() === lbl.trim()).map(o => o.value)", current_form_label)
                     
-                    await report(f"      ✔ 抓取完畢，共 {task_count} 筆紀錄")
+                    if not form_values:
+                        await report(f"      ⚠ 找不到表單選項: {current_form_label}")
+                        continue
+
+                    # 針對「實習生教學記錄」設定查詢次數 (處理數個單位的情況)
+                    # 若為該特定表單則嘗試前 3 個 Value，其餘表單僅查第 1 個
+                    max_queries = 3 if current_form_label == TEACHING_FORM_INTERN else 1
+                    target_values = form_values[:max_queries]
+                    task_count = 0
+
+                    for query_idx, val in enumerate(target_values):
+                        if len(target_values) > 1:
+                            await report(f"      -> 正在查詢第 {query_idx + 1} 個單位表單 (Value: {val})...")
+                        
+                        await page.select_option('select[name="sf_id"]', value=val)
+                        await page.wait_for_timeout(500)
+
+                        # Click Search
+                        await page.click('.btn-query')
+                        await page.wait_for_load_state("networkidle")
+                        await page.wait_for_timeout(3000)
+
+                        # Extract rows
+                        rows = await page.query_selector_all('table.table-bordered tbody tr')
+                        sub_task_count = 0
+                        for row in rows:
+                            cols = await row.query_selector_all('td')
+                            if len(cols) < 5: continue
+                            
+                            case_name = await cols[0].inner_text()
+                            start_time = await cols[1].inner_text()
+                            student_name = await cols[2].inner_text()
+                            submit_time = await cols[3].inner_text()
+                            
+                            # 檢查是否已存在 (避免跨單位重複抓取)
+                            record_key = f"{student_name.strip()}_{submit_time.strip()}_{case_name.strip()}"
+                            if any(f"{r['student_name']}_{r['submit_time']}_{r['case_name']}" == record_key for r in all_records_for_form):
+                                continue
+
+                            scores = {}
+                            for i in range(4, len(cols)):
+                                col = cols[i]
+                                txt = (await col.inner_text()).strip()
+                                
+                                if not txt:
+                                    popover_content = await col.get_attribute('data-content')
+                                    if popover_content:
+                                        txt = clean_html(popover_content)
+                                    else:
+                                        link = await col.query_selector('a')
+                                        if link:
+                                            href = await link.get_attribute('href')
+                                            link_text = (await link.inner_text()).strip()
+                                            txt = link_text if link_text else href
+                                
+                                scores[f"item_{i-3}"] = txt
+                            
+                            all_records_for_form.append({
+                                "student_name": student_name.strip(),
+                                "submit_time": submit_time.strip(),
+                                "case_name": case_name.strip(),
+                                "start_time": f"[{plan_label}] {start_time.strip()}", # 標記計畫來源
+                                "scores": scores
+                            })
+                            sub_task_count += 1
+                            task_count += 1
+                        
+                        if len(target_values) > 1:
+                            await report(f"         + 本單位抓取 {sub_task_count} 筆")
+
+                    await report(f"      ✔ 任務完成，總計抓取 {task_count} 筆紀錄")
                     task_summary.append({
                         "form": sheet_name.replace("CEEP_", ""),
                         "year": year_label,

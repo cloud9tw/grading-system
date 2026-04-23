@@ -11,3 +11,6 @@ MarkupSafe
 cryptography
 oauth2client
 playwright
+pandas
+openpyxl
+db-dtypes
