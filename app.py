@@ -742,6 +742,8 @@ def check_absent():
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         
+        today_str = now_dt.strftime("%Y-%m-%d")
+        
         # 1. 檢查排除日期 (系統選定排除日期，例如國定假日)
         try:
             sheet_settings = doc.worksheet('系統設定')
@@ -760,7 +762,6 @@ def check_absent():
             return jsonify({'success': True, 'msg': 'No students in roster'})
         
         # 取得今日打卡
-        today_str = now_dt.strftime("%Y-%m-%d")
         sheet_records = doc.worksheet('上下班打卡記錄')
         all_vals = sheet_records.get_all_values()
         
