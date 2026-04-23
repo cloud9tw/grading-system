@@ -12,6 +12,9 @@ import threading
 from ceep_scraper import scrape_ceep_all_forms
 from ceep_archiver import archive_to_sheets
 from sync_to_bq import sync_all as sync_to_bq_all
+import pandas as pd
+import io
+from flask import send_file
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -1601,6 +1604,133 @@ def get_student_stats():
     except Exception as e:
         import traceback
         traceback.print_exc()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/admin/export_excel', methods=['GET'])
+def admin_export_excel():
+    """管理員匯出實習成績與進度總表 (Excel)"""
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        # 1. 取得學員基本資料
+        ws_students = doc.worksheet('學員名單')
+        student_records = safe_get_all_records(ws_students)
+        
+        # 2. 取得打卡記錄計算總時數
+        try:
+            ws_attendance = doc.worksheet('上下班打卡記錄')
+            attendance_records = safe_get_all_records(ws_attendance)
+            hours_map = {}
+            for r in attendance_records:
+                s_name = str(r.get('學生', '')).strip()
+                if not s_name: continue
+                try:
+                    t_in = datetime.datetime.strptime(r.get('簽到時間', ''), "%Y-%m-%d %H:%M:%S")
+                    t_out = datetime.datetime.strptime(r.get('簽退時間', ''), "%Y-%m-%d %H:%M:%S")
+                    duration = (t_out - t_in).total_seconds() / 3600.0
+                    hours_map[s_name] = hours_map.get(s_name, 0) + duration
+                except: continue
+        except:
+            hours_map = {}
+
+        # 3. 取得 OPA 成績 (BigQuery)
+        opa_map = {}
+        bq_client, project_id = get_bq_client()
+        if bq_client:
+            q = f"""
+                SELECT student_name, 
+                       AVG(opa1_sum) as avg1, AVG(opa2_sum) as avg2, AVG(opa3_sum) as avg3,
+                       COUNT(*) as count
+                FROM `{project_id}.grading_data.grading_logs` 
+                WHERE is_deleted = FALSE OR is_deleted IS NULL
+                GROUP BY student_name
+            """
+            res = bq_client.query(q).result()
+            for r in res:
+                name = str(r.student_name).strip()
+                opa_map[name] = {
+                    'avg1': round(r.avg1 or 0, 2),
+                    'avg2': round(r.avg2 or 0, 2),
+                    'avg3': round(r.avg3 or 0, 2),
+                    'count': r.count
+                }
+
+        # 4. 取得排程與計算進度率 (進度對應邏輯)
+        progress_map = {}
+        try:
+            ws_sched = doc.worksheet(SCHEDULE_SHEET_NAME)
+            sched_records = safe_get_all_records(ws_sched)
+            intern_start = get_internship_start()
+            current_week = get_current_intern_week() or 28
+            
+            q_all = f"SELECT student_name, station, timestamp FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+            all_logs = list(bq_client.query(q_all).result())
+            
+            for rec in sched_records:
+                s_name = str(rec.get('學員姓名', '')).strip()
+                if not s_name: continue
+                
+                student_logs = [l for l in all_logs if str(l.student_name).strip() == s_name]
+                success_weeks = 0
+                total_relevant_weeks = min(current_week, 28)
+                
+                for i in range(1, total_relevant_weeks + 1):
+                    w_start = intern_start + datetime.timedelta(days=(i-1)*7)
+                    w_end = w_start + datetime.timedelta(days=6)
+                    ws_dt = datetime.datetime.combine(w_start, datetime.time.min)
+                    we_dt = datetime.datetime.combine(w_end, datetime.time.max)
+                    
+                    val = str(rec.get(f'W{i}', '')).strip()
+                    assigned = [s.strip() for s in val.split(',') if s.strip()]
+                    if not assigned:
+                        success_weeks += 1; continue
+                    
+                    week_logs = [l for l in student_logs if ws_dt <= l.timestamp.replace(tzinfo=None) + datetime.timedelta(hours=8) <= we_dt]
+                    all_hit = True
+                    for target in assigned:
+                        if not any(target in str(l.station) for l in week_logs):
+                            all_hit = False; break
+                    if all_hit: success_weeks += 1
+                
+                rate = (success_weeks/total_relevant_weeks)*100 if total_relevant_weeks > 0 else 0
+                progress_map[s_name] = f"{round(rate, 1)}%"
+        except: pass
+
+        # 5. 彙整資料
+        final_data = []
+        for s in student_records:
+            name = str(s.get('姓名', '')).strip()
+            if not name: continue
+            opa = opa_map.get(name, {'avg1': 0, 'avg2': 0, 'avg3': 0, 'count': 0})
+            final_data.append({
+                '學員ID': s.get('學生ID', ''),
+                '姓名': name,
+                '學員類別': s.get('學員類別', ''),
+                '實習總時數': round(hours_map.get(name, 0), 1),
+                'OPA1平均': opa['avg1'],
+                'OPA2平均': opa['avg2'],
+                'OPA3平均': opa['avg3'],
+                '總評核筆數': opa['count'],
+                '進度達標率': progress_map.get(name, '0%')
+            })
+            
+        df = pd.DataFrame(final_data)
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='實習成績總表')
+        output.seek(0)
+        
+        filename = f"Internship_Report_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx"
+        return send_file(output, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+    except Exception as e:
+        logging.error(f"Export Excel Error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/student_gamification', methods=['GET'])
