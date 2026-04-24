@@ -50,6 +50,25 @@ google = oauth.register(
     server_metadata_url='https://accounts.google.com/.well-known/openid-configuration'
 )
 
+# 全域快取 (Global Cache) 減少 Sheets API 呼叫
+GLOBAL_CACHE = {
+    'students': {'data': None, 'time': None},
+    'teachers': {'data': None, 'time': None},
+    'stations': {'data': None, 'time': None}
+}
+CACHE_TTL = 600 # 10 分鐘
+
+def get_cached_data(key, fetch_func):
+    now = datetime.datetime.now()
+    cache = GLOBAL_CACHE.get(key)
+    if cache and cache['data'] and cache['time'] and (now - cache['time']).total_seconds() < CACHE_TTL:
+        return cache['data']
+    
+    # 執行抓取
+    data = fetch_func()
+    GLOBAL_CACHE[key] = {'data': data, 'time': now}
+    return data
+
 def safe_get_all_records(worksheet):
     data = worksheet.get_all_values()
     if not data:
@@ -1434,25 +1453,25 @@ def get_config():
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         
-        # 取得學員名單 (確保列表不會因為單一欄位缺失而變空)
-        try:
-            ws_students = doc.worksheet('學員名單')
-            students_records = safe_get_all_records(ws_students)
-            students = []
-            for rec in students_records:
-                name = str(rec.get('姓名', '')).strip()
-                # 兼容不同的 ID 欄位名稱
-                sid = str(rec.get('學生ID') or rec.get('學號') or '').split('.')[0].strip()
-                if name and sid:
-                    students.append({
-                        'id': sid,
-                        'name': name,
-                        'email': str(rec.get('Email', '')).strip().lower(),
-                        'type': str(rec.get('學員類別') or rec.get('職級') or '未分類')
-                    })
-        except Exception as e:
-            print(f"Error loading students: {e}")
-            students = []
+        # 取得學員名單 (使用快取)
+        def fetch_students():
+            try:
+                ws_students = doc.worksheet('學員名單')
+                return safe_get_all_records(ws_students)
+            except: return []
+            
+        students_records = get_cached_data('students', fetch_students)
+        students = []
+        for rec in students_records:
+            name = str(rec.get('姓名', '')).strip()
+            sid = str(rec.get('學生ID') or rec.get('學號') or '').split('.')[0].strip()
+            if name and sid:
+                students.append({
+                    'id': sid,
+                    'name': name,
+                    'email': str(rec.get('Email', '')).strip().lower(),
+                    'type': str(rec.get('學員類別') or rec.get('職級') or '未分類')
+                })
         
         # 取得站別OPA細項
         sheet_stations = doc.worksheet('站別OPA細項')
@@ -1684,47 +1703,41 @@ def aggregate_student_report_data(doc, bq_client, project_id):
         m = re.search(r'^(.+?)\s*[（\(]', str(raw_name))
         return m.group(1).strip() if m else str(raw_name).strip()
     
+    # --- 3. DOPS 數據 (從 BigQuery 讀取) ---
     dops_stats = {}
-    try:
-        ws_dops = doc.worksheet('CEEP_DOPS')
-        dops_data = ws_dops.get_all_values()
-        time.sleep(1)
-        if len(dops_data) > 1:
-            for r in dops_data[1:]:
-                if len(r) < 27: continue # DOPS 預期至少 27 欄
-                name = clean_ceep_name(r[2])
-                stn = r[11].strip()
-                try:
-                    score = float(r[26]) # 抓取索引 26 的分數
-                    feedback = r[23].strip() # 抓取索引 23 的回饋
-                    if name not in dops_stats: dops_stats[name] = {}
-                    if stn not in dops_stats[name]: dops_stats[name][stn] = {'scores': [], 'feedbacks': []}
-                    dops_stats[name][stn]['scores'].append(score)
-                    if feedback: dops_stats[name][stn]['feedbacks'].append(feedback)
-                except: continue
-    except: pass
+    if bq_client:
+        try:
+            q_dops = f"SELECT student_name, station, score, feedback FROM `{project_id}.grading_data.dops_logs`"
+            res_dops = bq_client.query(q_dops).result()
+            for r in res_dops:
+                name = clean_ceep_name(r.student_name)
+                stn = str(r.station).strip()
+                if name not in dops_stats: dops_stats[name] = {}
+                if stn not in dops_stats[name]: dops_stats[name][stn] = {'scores': [], 'feedbacks': []}
+                dops_stats[name][stn]['scores'].append(r.score)
+                if r.feedback: dops_stats[name][stn]['feedbacks'].append(r.feedback)
+        except Exception as e:
+            logging.error(f"BQ DOPS Read Error: {e}")
 
+    # --- 4. Mini-CEX 數據 (從 BigQuery 讀取) ---
     mcex_stats = {}
-    try:
-        ws_mcex = doc.worksheet('CEEP_MiniCEX')
-        mcex_data = ws_mcex.get_all_values()
-        time.sleep(1)
-        if len(mcex_data) > 1:
-            for r in mcex_data[1:]:
-                if len(r) < 22: continue
-                name = clean_ceep_name(r[2])
+    if bq_client:
+        try:
+            q_mcex = f"SELECT student_name, station, score, feedback FROM `{project_id}.grading_data.minicex_logs`"
+            res_mcex = bq_client.query(q_mcex).result()
+            for r in res_mcex:
+                name = clean_ceep_name(r.student_name)
+                # MiniCEX 站別通常包含 "-", 需要清理
                 import re
-                station_match = re.search(r'^(.+?)-', r[0])
-                stn = station_match.group(1).strip() if station_match else r[10].strip()
-                try:
-                    score = float(r[21]) # Mini-CEX 抓取索引 21 的分數
-                    feedback = r[20].strip() # 抓取索引 20 的回饋
-                    if name not in mcex_stats: mcex_stats[name] = {}
-                    if stn not in mcex_stats[name]: mcex_stats[name][stn] = {'scores': [], 'feedbacks': []}
-                    mcex_stats[name][stn]['scores'].append(score)
-                    if feedback: mcex_stats[name][stn]['feedbacks'].append(feedback)
-                except: continue
-    except: pass
+                station_match = re.search(r'^(.+?)-', str(r.station))
+                stn = station_match.group(1).strip() if station_match else str(r.station).strip()
+                
+                if name not in mcex_stats: mcex_stats[name] = {}
+                if stn not in mcex_stats[name]: mcex_stats[name][stn] = {'scores': [], 'feedbacks': []}
+                mcex_stats[name][stn]['scores'].append(r.score)
+                if r.feedback: mcex_stats[name][stn]['feedbacks'].append(r.feedback)
+        except Exception as e:
+            logging.error(f"BQ MiniCEX Read Error: {e}")
 
     # 5. 進度達標率判定邏輯
     progress_map = {}
@@ -2139,20 +2152,27 @@ def admin_portal():
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
     sheet_feedback = "112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w"
     
-    # 取得學員名單供模擬功能使用
+    # 獲取學員名單 (使用快取)
     students = []
     try:
         gc = get_gspread_client()
         doc = gc.open_by_key(sheet_id)
-        sheet_students = doc.worksheet('學員名單')
-        records = safe_get_all_records(sheet_students)
+        
+        def fetch_students_admin():
+            try:
+                ws = doc.worksheet('學員名單')
+                return safe_get_all_records(ws)
+            except: return []
+            
+        records = get_cached_data('students', fetch_students_admin)
         for r in records:
             s_name = str(r.get('姓名', '')).strip()
-            s_id = str(r.get('學生ID', '')).strip()
+            # 兼容不同的 ID 欄位名稱
+            s_id = str(r.get('學生ID', '') or r.get('學號', '')).split('.')[0].strip()
             if s_name and s_id:
                 students.append({'name': s_name, 'id': s_id})
     except Exception as e:
-        print(f"Admin fetch students error: {e}")
+        logging.error(f"Admin fetch students error: {e}")
 
     return render_template('admin_portal.html', 
                            user=user, 

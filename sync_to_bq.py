@@ -144,6 +144,57 @@ def sync_all(callback=None):
         except Exception as e:
             log(f"EPA Logs Sync Failed: {str(e)}")
 
+        # --- 3. SYNC CEEP DOPS ---
+        log("[3/4] Syncing CEEP DOPS Records...")
+        try:
+            ws = doc.worksheet('CEEP_DOPS')
+            vals = ws.get_all_values()
+            if len(vals) > 1:
+                json_rows = []
+                for r in vals[1:]:
+                    if len(r) < 27: continue
+                    ts = parse_dt(r[3]) # 假設索引 3 是提交時間
+                    json_rows.append({
+                        "timestamp": ts,
+                        "student_name": r[2].strip(),
+                        "station": r[11].strip(),
+                        "score": float(r[26]) if r[26] else 0.0,
+                        "feedback": r[23].strip(),
+                        "raw_data": ""
+                    })
+                if json_rows:
+                    job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE", source_format="NEWLINE_DELIMITED_JSON")
+                    table_id = f"{project}.grading_data.dops_logs"
+                    client.load_table_from_json(json_rows, table_id, job_config=job_config).result()
+                    log(f"Success: CEEP DOPS Sync ({len(json_rows)} entries)")
+        except Exception as e:
+            log(f"CEEP DOPS Sync Failed: {str(e)}")
+
+        # --- 4. SYNC CEEP MiniCEX ---
+        log("[4/4] Syncing CEEP MiniCEX Records...")
+        try:
+            ws = doc.worksheet('CEEP_MiniCEX')
+            vals = ws.get_all_values()
+            if len(vals) > 1:
+                json_rows = []
+                for r in vals[1:]:
+                    if len(r) < 22: continue
+                    ts = parse_dt(r[3])
+                    json_rows.append({
+                        "timestamp": ts,
+                        "student_name": r[2].strip(),
+                        "station": r[10].strip(), # 這裡先用原始欄位，由後端 clean
+                        "score": float(r[21]) if r[21] else 0.0,
+                        "feedback": r[20].strip()
+                    })
+                if json_rows:
+                    job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE", source_format="NEWLINE_DELIMITED_JSON")
+                    table_id = f"{project}.grading_data.minicex_logs"
+                    client.load_table_from_json(json_rows, table_id, job_config=job_config).result()
+                    log(f"Success: CEEP MiniCEX Sync ({len(json_rows)} entries)")
+        except Exception as e:
+            log(f"CEEP MiniCEX Sync Failed: {str(e)}")
+
         log("Sync Complete: BigQuery is now Up-to-Date.")
         return True
     except Exception as e:
