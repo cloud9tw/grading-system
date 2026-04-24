@@ -160,7 +160,6 @@
                             <th class="px-6 py-4 text-center">OPA2</th>
                             <th class="px-6 py-4 text-center">OPA3</th>
                             <th class="px-6 py-4">質性回饋</th>
-                            <th class="px-6 py-4 text-right">整體評價</th>
                         </tr>
                     </thead>
                     <tbody id="logsTable" class="text-sm divide-y divide-slate-100">
@@ -412,7 +411,6 @@
                     <td class="px-6 py-4 text-center font-bold text-emerald-600">${log.opa2}</td>
                     <td class="px-6 py-4 text-center font-bold text-amber-600">${log.opa3}</td>
                     <td class="px-6 py-4 text-slate-500 text-xs italic truncate max-w-[200px]" title="${log.comment}">${log.comment}</td>
-                    <td class="px-6 py-4 text-right font-black text-slate-900">${log.aspect1}</td>
                 `;
                 tbody.appendChild(tr);
             });
