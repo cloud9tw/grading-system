@@ -2045,6 +2045,31 @@ def view_shared_dashboard(token):
     
     return redirect(url_for('student_pro_report'))
 
+@app.route('/admin/view_report/<student_id>')
+def admin_view_report(student_id):
+    if not session.get('is_admin'):
+        return redirect(url_for('login'))
+    
+    # 獲取學員列表以讀取正確的姓名
+    try:
+        gc = get_gspread_client()
+        doc = gc.open_by_key(os.getenv("GOOGLE_SHEET_ID"))
+        sheet = doc.worksheet('學員清單')
+        records = safe_get_all_records(sheet)
+        target = next((r for r in records if str(r.get('學員ID', '')).split('.')[0] == str(student_id)), None)
+        
+        if target:
+            session['student_info'] = {
+                'id': str(target.get('學員ID', '')),
+                'name': str(target.get('姓名', ''))
+            }
+            session['is_shared_view'] = False # 管理員身份預覽
+            return redirect(url_for('student_pro_report'))
+    except Exception as e:
+        return f"載入失敗: {e}", 500
+    
+    return "找不到該學員資訊", 404
+
 @app.route('/admin')
 def admin_portal():
     user = session.get('user')
