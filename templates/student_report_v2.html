@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學員專業成長報告 (Pro Portfolio)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+        @media print {
+            .no-print { display: none; }
+            .print-break { page-break-after: always; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+    <div class="no-print bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">P</div>
+            <h1 class="font-bold text-slate-800">Pro 視覺化成長報告</h1>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="window.history.back()" class="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium transition">返回儀表板</button>
+            <button onclick="exportToPDF()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 transition flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                匯出專業 PDF
+            </button>
+        </div>
+    </div>
+
+    <main id="report-content" class="max-w-5xl mx-auto my-8 bg-white shadow-2xl rounded-3xl overflow-hidden">
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-slate-900 to-indigo-900 px-10 py-12 text-white relative">
+            <div class="absolute top-0 right-0 p-10 opacity-10">
+                <svg class="w-40 h-40" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path></svg>
+            </div>
+            <div class="relative z-10">
+                <p class="text-indigo-300 font-bold tracking-widest uppercase text-sm mb-2">Clinical Performance Portfolio</p>
+                <h2 class="text-4xl font-extrabold mb-4">學員專業能力成長報告</h2>
+                <div class="flex flex-wrap gap-6 items-center text-sm text-slate-300">
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-500">學員姓名：</span>
+                        <span class="text-white font-bold text-lg" id="studentName">{{ student_info.name }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-500">學號：</span>
+                        <span class="text-white font-mono" id="studentId">{{ student_info.id }}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-slate-500">產生日期：</span>
+                        <span class="text-white" id="reportDate"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2x2 Grid Charts -->
+        <div class="p-10 grid grid-cols-1 lg:grid-cols-2 gap-10">
+            
+            <!-- Trend Line Chart -->
+            <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-black text-slate-800 flex items-center gap-2">
+                        <span class="w-2 h-6 bg-indigo-600 rounded-full"></span>
+                        檢查歷次整體任務之評定
+                    </h3>
+                </div>
+                <div class="h-64">
+                    <canvas id="trendsChart"></canvas>
+                </div>
+                <p class="text-[10px] text-slate-400 mt-4 text-center">追蹤 OPA1(準備)、OPA2(執行)、OPA3(後處置) 隨時間之變化曲線</p>
+            </div>
+
+            <!-- Level Distribution Pie Chart -->
+            <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-black text-slate-800 flex items-center gap-2">
+                        <span class="w-2 h-6 bg-emerald-500 rounded-full"></span>
+                        信賴等級分佈統計
+                    </h3>
+                    <div class="bg-white px-3 py-1 rounded-full border text-xs font-bold text-slate-500">
+                        總評次數: <span id="totalCount" class="text-emerald-600">0</span>
+                    </div>
+                </div>
+                <div class="h-64 flex items-center justify-center">
+                    <canvas id="levelsChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Gauge Chart (Average) -->
+            <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200 flex flex-col">
+                <h3 class="font-black text-slate-800 flex items-center gap-2 mb-10">
+                    <span class="w-2 h-6 bg-orange-500 rounded-full"></span>
+                    整體任務評定平均值
+                </h3>
+                <div class="flex-1 flex flex-col items-center justify-center relative">
+                    <div class="w-72 h-36">
+                        <canvas id="gaugeChart"></canvas>
+                    </div>
+                    <div class="text-center -mt-8">
+                        <div id="avgScoreText" class="text-6xl font-black text-slate-900 tracking-tighter">0.00</div>
+                        <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">Overall Proficiency Index</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stacked Bar (Distribution) -->
+            <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
+                <h3 class="font-black text-slate-800 flex items-center gap-2 mb-6">
+                    <span class="w-2 h-6 bg-purple-500 rounded-full"></span>
+                    檢查任務評定結果分布
+                </h3>
+                <div class="h-64">
+                    <canvas id="distributionChart"></canvas>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Details Table -->
+        <div class="px-10 pb-12">
+            <h3 class="font-black text-slate-800 flex items-center gap-2 mb-6 uppercase tracking-wider">
+                <span class="w-2 h-6 bg-slate-800 rounded-full"></span>
+                整體任務評定結果列表 (近 15 筆)
+            </h3>
+            <div class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-900 text-white">
+                        <tr>
+                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">評核教師</th>
+                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">日期</th>
+                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">站別</th>
+                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">評核項目</th>
+                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-right">整體評價</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsTable" class="text-sm divide-y divide-slate-100">
+                        <!-- Data rows injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="bg-slate-50 px-10 py-6 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400 font-medium">
+            <div>系統自動產生於 {{ request.host }} • 僅供臨床教學參考</div>
+            <div class="flex gap-4">
+                <span>EPA-GRADING-SYSTEM v2.0</span>
+                <span>AUTHENTICATED PORTFOLIO</span>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.getElementById('reportDate').textContent = new Date().toLocaleDateString('zh-TW');
+
+        async function initReport() {
+            try {
+                const res = await fetch('/api/student_report_data');
+                const result = await res.json();
+                if (!result.success) throw new Error(result.error);
+
+                const data = result;
+                document.getElementById('totalCount').textContent = data.total_count;
+                document.getElementById('avgScoreText').textContent = data.avg_score.toFixed(2);
+
+                renderTrends(data.trends);
+                renderLevels(data.level_dist);
+                renderGauge(data.avg_score);
+                renderDistribution(data.level_dist);
+                renderLogs();
+
+            } catch (e) {
+                console.error("Failed to load report data:", e);
+                alert("載入報表數據失敗: " + e.message);
+            }
+        }
+
+        function renderTrends(trends) {
+            const ctx = document.getElementById('trendsChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: trends.slice(-10).map(t => t.date),
+                    datasets: [
+                        { label: 'OPA1', data: trends.slice(-10).map(t => t.opa1), borderColor: '#6366f1', backgroundColor: '#6366f122', tension: 0.4, borderWidth: 3, pointRadius: 4 },
+                        { label: 'OPA2', data: trends.slice(-10).map(t => t.opa2), borderColor: '#10b981', backgroundColor: '#10b98122', tension: 0.4, borderWidth: 3, pointRadius: 4 },
+                        { label: 'OPA3', data: trends.slice(-10).map(t => t.opa3), borderColor: '#8b5cf6', backgroundColor: '#8b5cf622', tension: 0.4, borderWidth: 3, pointRadius: 4 }
+                    ]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { font: { weight: 'bold', size: 10 } } } }, scales: { y: { min: 0, max: 10, grid: { display: false } } } }
+            });
+        }
+
+        function renderLevels(dist) {
+            const ctx = document.getElementById('levelsChart').getContext('2d');
+            const labels = Object.keys(dist);
+            const values = Object.values(dist);
+            const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
+
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+                options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } } } } }
+            });
+        }
+
+        function renderGauge(val) {
+            const ctx = document.getElementById('gaugeChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    datasets: [{
+                        data: [val, 6 - val],
+                        backgroundColor: ['#f59e0b', '#e2e8f0'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    rotation: 270,
+                    circumference: 180,
+                    cutout: '85%',
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
+                }
+            });
+        }
+
+        function renderDistribution(dist) {
+            const ctx = document.getElementById('distributionChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(dist),
+                    datasets: [{
+                        label: '評定頻率',
+                        data: Object.values(dist),
+                        backgroundColor: '#8b5cf6',
+                        borderRadius: 8
+                    }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { borderDash: [5,5] } } } }
+            });
+        }
+
+        async function renderLogs() {
+            try {
+                // 從現有的 api/student_stats 抓取詳細紀錄 (雖然 report_data 也有，但這個比較齊全)
+                const res = await fetch('/api/student_stats');
+                const result = await res.json();
+                const tbody = document.getElementById('logsTable');
+                
+                let allLogs = [];
+                Object.keys(result.data).forEach(stn => {
+                    result.data[stn].forEach(log => {
+                        allLogs.append({...log, station: stn});
+                    });
+                });
+                
+                // 依時間排序並取前 15
+                allLogs.sort((a,b) => new Date(b.time) - new Date(a.time));
+                
+                allLogs.slice(0, 15).forEach(log => {
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-slate-50 transition";
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 font-bold text-slate-700">${log.teacher}</td>
+                        <td class="px-6 py-4 text-slate-500 font-mono text-[11px]">${log.time.split(' ')[0]}</td>
+                        <td class="px-6 py-4"><span class="bg-indigo-50 text-indigo-700 text-[10px] font-black px-2 py-1 rounded-md uppercase">${log.station}</span></td>
+                        <td class="px-6 py-4 text-slate-400 text-xs truncate max-w-[200px]">${log.comment || '無質性回饋'}</td>
+                        <td class="px-6 py-4 text-right font-black text-slate-900">${log.aspect1 || '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch(e) {}
+        }
+
+        async function exportToPDF() {
+            const { jsPDF } = window.jspdf;
+            const element = document.getElementById('report-content');
+            
+            try {
+                const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save(`${document.getElementById('studentName').textContent}_成長報告.pdf`);
+            } catch (err) {
+                alert("PDF 匯出失敗: " + err.message);
+            }
+        }
+
+        initReport();
+    </script>
+</body>
+</html>

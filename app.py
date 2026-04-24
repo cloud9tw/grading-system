@@ -2,9 +2,10 @@ import os
 import json
 import datetime
 import logging
+import uuid
 from google.cloud import bigquery
 from google.oauth2 import service_account
-from flask import Flask, redirect, url_for, session, render_template, request, jsonify, Response
+from flask import Flask, redirect, url_for, session, render_template, request, jsonify, Response, flash
 from authlib.integrations.flask_client import OAuth
 import gspread
 from dotenv import load_dotenv
@@ -825,6 +826,12 @@ def submit_attendance():
 @app.route('/api/cron/check_absent', methods=['GET'])
 def check_absent():
     try:
+        # 1. 初始化連線
+        from credentials_utils import get_gspread_client
+        gc = get_gspread_client()
+        if not gc:
+            return jsonify({'success': False, 'error': 'Google Sheets client initialization failed'}), 500
+            
         now_dt = datetime.datetime.utcnow() + datetime.timedelta(hours=8)
         if now_dt.weekday() >= 5: # 週末不寄信
             return jsonify({'success': True, 'msg': 'Today is weekend, skip absent check.'})
@@ -834,13 +841,26 @@ def check_absent():
         
         today_str = now_dt.strftime("%Y-%m-%d")
         
-        # 1. 檢查排除日期 (系統選定排除日期，例如國定假日)
+        # 2. 檢查排除日期 (動態搜尋「排除日期」欄位)
         try:
             sheet_settings = doc.worksheet('系統設定')
-            # 排除日期在第二欄 (B欄)
-            excluded_dates = sheet_settings.col_values(2)[1:] # 跳過標題
-            if today_str in [str(d).strip() for d in excluded_dates if d]:
-                return jsonify({'success': True, 'msg': f'Today ({today_str}) is an excluded date, skip absent check.'})
+            settings_vals = sheet_settings.get_all_values()
+            if settings_vals:
+                header = settings_vals[0]
+                try:
+                    # 尋找「排除日期」所在的標題欄位
+                    date_col_idx = -1
+                    for idx, val in enumerate(header):
+                        if '排除日期' in str(val) or '國定假日' in str(val):
+                            date_col_idx = idx
+                            break
+                    
+                    if date_col_idx != -1:
+                        excluded_dates = [str(r[date_col_idx]).strip() for r in settings_vals[1:] if len(r) > date_col_idx]
+                        if today_str in excluded_dates:
+                            return jsonify({'success': True, 'msg': f'Today ({today_str}) is an excluded date, skip absent check.'})
+                except Exception as ex:
+                    print(f"Search exclusion column error: {ex}")
         except Exception as e:
             print(f"Read excluded dates error: {e}")
 
@@ -1496,17 +1516,24 @@ def get_config():
 
 @app.route('/api/student_stats', methods=['GET'])
 def get_student_stats():
-    user = session.get('user')
-    if not user:
-        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
-    if session.get('current_role') != 'student':
-        return jsonify({'success': False, 'error': 'Forbidden'}), 403
-    student_info = session.get('student_info')
-    if not student_info:
-        return jsonify({'success': False, 'error': 'No info'}), 400
-    try:
+    # [Phase 6] 支援分享模式存取
+    is_shared = session.get('is_shared_view', False)
+    if is_shared:
+        target_id = session.get('shared_student_id')
+        target_name = session.get('shared_student_name')
+    else:
+        user = session.get('user')
+        if not user:
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        if session.get('current_role') != 'student':
+            return jsonify({'success': False, 'error': 'Forbidden'}), 403
+        student_info = session.get('student_info')
+        if not student_info:
+            return jsonify({'success': False, 'error': 'No info'}), 400
         target_id = str(student_info.get('id', '')).split('.')[0].strip()
         target_name = str(student_info.get('name', '')).strip()
+
+    try:
         records_by_station = {}
         bq_client, project_id = get_bq_client()
         if bq_client:
@@ -1855,7 +1882,160 @@ def get_student_attendance():
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# --- 管理員門戶與功能 ---
+# [Phase 6] 產生分享連結 API
+@app.route('/api/admin/generate_share_link/<student_id>', methods=['POST'])
+def generate_share_link(student_id):
+    user = session.get('user')
+    if not user or not session.get('is_admin'):
+        return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    try:
+        from credentials_utils import get_gspread_client
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        ws_students = doc.worksheet('學員名單')
+        students = safe_get_all_records(ws_students)
+        student_name = "Unknown"
+        for s in students:
+            if str(s.get('學生ID', '')).split('.')[0] == str(student_id):
+                student_name = s.get('姓名', 'Unknown')
+                break
+        
+        try:
+            ws = doc.worksheet('分享連結管理')
+        except:
+            ws = doc.add_worksheet(title='分享連結管理', rows=100, cols=10)
+            ws.append_row(['學員ID', '學員姓名', '權杖', '啟用狀態', '建立時間'])
+            
+        token = str(uuid.uuid4())[:16]
+        all_vals = ws.get_all_values()
+        found_row = -1
+        for i, row in enumerate(all_vals):
+            if i == 0: continue
+            if len(row) > 0 and str(row[0]).split('.')[0] == str(student_id):
+                found_row = i + 1
+                break
+        
+        timestamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+        if found_row != -1:
+            ws.update_cell(found_row, 3, token)
+            ws.update_cell(found_row, 4, 'TRUE')
+            ws.update_cell(found_row, 5, timestamp)
+        else:
+            ws.append_row([student_id, student_name, token, 'TRUE', timestamp])
+            
+        share_url = f"{request.host_url.rstrip('/')}/share/{token}"
+        return jsonify({'success': True, 'token': token, 'share_url': share_url})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# [Phase 4] 視覺化報表數據 API (Pro Dashboard 使用)
+@app.route('/api/student_report_data')
+def get_student_report_data():
+    is_shared = session.get('is_shared_view', False)
+    if is_shared:
+        target_id = session.get('shared_student_id')
+        target_name = session.get('shared_student_name')
+    else:
+        user = session.get('user')
+        if not user: return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+        student_info = session.get('student_info')
+        if not student_info: return jsonify({'success': False, 'error': 'No info'}), 400
+        target_id = str(student_info.get('id', '')).split('.')[0].strip()
+        target_name = str(student_info.get('name', '')).strip()
+
+    try:
+        bq_client, project_id = get_bq_client()
+        if not bq_client: return jsonify({'success': False, 'error': 'BQ Error'}), 500
+        
+        q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2 FROM `{project_id}.grading_data.grading_logs` WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+        job_config = bigquery.QueryJobConfig(query_parameters=[
+            bigquery.ScalarQueryParameter("sid", "STRING", target_id),
+            bigquery.ScalarQueryParameter("sname", "STRING", target_name)
+        ])
+        results = list(bq_client.query(q, job_config=job_config).result(timeout=20))
+        
+        level_dist = {}
+        for r in results:
+            lv = str(r.aspect1 or '未評定').strip()
+            level_dist[lv] = level_dist.get(lv, 0) + 1
+            
+        trends = []
+        for r in results:
+            def to_f(v): 
+                try: return float(v)
+                except: return 0.0
+            trends.append({
+                'date': r.timestamp.strftime('%m/%d'),
+                'opa1': to_f(r.opa1_sum),
+                'opa2': to_f(r.opa2_sum),
+                'opa3': to_f(r.opa3_sum)
+            })
+            
+        all_scores = [float(r.aspect2) for r in results if r.aspect2 and str(r.aspect2).replace('.','').isdigit()]
+        avg_score = round(sum(all_scores) / len(all_scores), 2) if all_scores else 0
+        
+        return jsonify({
+            'success': True,
+            'total_count': len(results),
+            'level_dist': level_dist,
+            'trends': trends,
+            'avg_score': avg_score
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# [Phase 6] 分享連結驗證輔助函數
+def get_share_info_by_token(token):
+    try:
+        from credentials_utils import get_gspread_client
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        
+        try:
+            ws = doc.worksheet('分享連結管理')
+        except:
+            ws = doc.add_worksheet(title='分享連結管理', rows=100, cols=10)
+            ws.append_row(['學員ID', '學員姓名', '權杖', '啟用狀態', '建立時間'])
+            
+        all_data = safe_get_all_records(ws)
+        for row in all_data:
+            if str(row.get('權杖', '')).strip() == str(token).strip():
+                if str(row.get('啟用狀態', '')).strip().upper() == 'TRUE':
+                    return {
+                        'id': str(row.get('學員ID', '')),
+                        'name': str(row.get('學員姓名', ''))
+                    }
+        return None
+    except Exception as e:
+        print(f"Share token validation error: {e}")
+        return None
+
+@app.route('/student/pro_report')
+def student_pro_report():
+    is_shared = session.get('is_shared_view', False)
+    student_info = session.get('student_info')
+    if not is_shared and not session.get('user'):
+        return redirect(url_for('login'))
+    return render_template('student_report_v2.html', student_info=student_info)
+
+@app.route('/share/<token>')
+def view_shared_dashboard(token):
+    share_info = get_share_info_by_token(token)
+    if not share_info:
+        return f"<h1>分享連結無效或已過期</h1><p>請聯繫管理員重新產生連結。</p>", 403
+    
+    session['user'] = {'name': f"外部查核員 (觀看 {share_info['name']})", 'email': 'guest@shared.view', 'picture': ''}
+    session['current_role'] = 'student'
+    session['is_shared_view'] = True
+    session['shared_student_id'] = share_info['id']
+    session['shared_student_name'] = share_info['name']
+    session['student_info'] = share_info
+    
+    return redirect(url_for('student_pro_report'))
 
 @app.route('/admin')
 def admin_portal():

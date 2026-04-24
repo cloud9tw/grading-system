@@ -218,6 +218,28 @@
                 </div>
             </a>
 
+            <!-- [Phase 6] 外部分享連結管理 (New) -->
+            <div class="group bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-xl hover:border-blue-500 transition-all duration-300">
+                <div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path></svg>
+                </div>
+                <h3 class="text-2xl font-bold text-gray-900 mb-3">外部分享連結管理</h3>
+                <p class="text-gray-600 mb-4">產生加密連結，讓無帳號的使用者觀看特定學員的「專業成長報表」。</p>
+                <div class="space-y-4">
+                    <select id="share_student_id" class="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none">
+                        <option value="" disabled selected>請選擇學員...</option>
+                        {% for s in students %}
+                        <option value="{{ s.id }}">{{ s.name }} ({{ s.id }})</option>
+                        {% endfor %}
+                    </select>
+                    <button onclick="generateShareLink()" class="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">產生並複製連結</button>
+                    <div id="share_result" class="hidden">
+                        <input type="text" id="share_url_input" readonly class="w-full p-2 text-xs bg-slate-100 border rounded font-mono">
+                        <p class="text-[10px] text-green-600 mt-1 font-bold">✅ 連結已產生，請複製給查核員。</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- 模擬學員介面 (New) -->
             <div
                 class="group bg-white rounded-3xl p-8 shadow-sm border border-gray-200 hover:shadow-xl hover:border-purple-500 transition-all duration-300 w-full">
@@ -255,6 +277,31 @@
 
         </div>
     </main>
+
+    <script>
+        async function generateShareLink() {
+            const sid = document.getElementById('share_student_id').value;
+            if(!sid) return alert('請先選擇學員');
+            
+            try {
+                const res = await fetch(`/api/admin/generate_share_link/${sid}`, {method: 'POST'});
+                const data = await res.json();
+                if(data.success) {
+                    const input = document.getElementById('share_url_input');
+                    const resDiv = document.getElementById('share_result');
+                    input.value = data.share_url;
+                    resDiv.classList.remove('hidden');
+                    input.select();
+                    document.execCommand('copy');
+                    alert('連結已產生並複製到剪貼簿！');
+                } else {
+                    alert('產生失敗：' + data.error);
+                }
+            } catch(e) {
+                alert('系統連線失敗');
+            }
+        }
+    </script>
 
     <footer class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center text-gray-400 text-sm">
         &copy; 2026 學員評分與學習軌跡系統 - 管理員專區
