@@ -141,8 +141,10 @@
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest">
                         <tr>
+                            <th class="px-6 py-4">評核教師</th>
                             <th class="px-6 py-4">日期</th>
                             <th class="px-6 py-4">站別</th>
+                            <th class="px-6 py-4">質性回饋</th>
                             <th class="px-6 py-4 text-right">整體評價</th>
                         </tr>
                     </thead>
@@ -273,8 +275,10 @@
             data.slice().reverse().forEach(log => {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
+                    <td class="px-6 py-4 font-bold text-slate-700 text-xs">${log.teacher}</td>
                     <td class="px-6 py-4 text-slate-500 font-mono text-[11px]">${log.date}</td>
                     <td class="px-6 py-4"><span class="bg-indigo-50 text-indigo-700 text-[10px] font-black px-2 py-1 rounded-md uppercase">${log.station}</span></td>
+                    <td class="px-6 py-4 text-slate-500 text-xs italic truncate max-w-[250px]" title="${log.comment}">${log.comment}</td>
                     <td class="px-6 py-4 text-right font-black text-slate-900">${log.aspect1}</td>
                 `;
                 tbody.appendChild(tr);

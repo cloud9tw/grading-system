@@ -1963,7 +1963,7 @@ def get_student_report_data():
         bq_client, project_id = get_bq_client()
         if not bq_client: return jsonify({'success': False, 'error': 'BQ Error'}), 500
         
-        q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2 FROM `{project_id}.grading_data.grading_logs` WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+        q = f"SELECT teacher_name, station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
         job_config = bigquery.QueryJobConfig(query_parameters=[
             bigquery.ScalarQueryParameter("sid", "STRING", target_id),
             bigquery.ScalarQueryParameter("sname", "STRING", target_name)
@@ -1974,6 +1974,7 @@ def get_student_report_data():
         raw_logs = []
         for r in results:
             raw_logs.append({
+                'teacher': str(r.teacher_name or '未知'),
                 'station': str(r.station or '未知'),
                 'date': r.timestamp.strftime('%Y-%m-%d'),
                 'm_d': r.timestamp.strftime('%m/%d'),
@@ -1981,7 +1982,8 @@ def get_student_report_data():
                 'opa2': float(r.opa2_sum or 0) if str(r.opa2_sum).replace('.','').isdigit() else 0,
                 'opa3': float(r.opa3_sum or 0) if str(r.opa3_sum).replace('.','').isdigit() else 0,
                 'aspect1': str(r.aspect1 or '未評定').strip(),
-                'aspect2': float(r.aspect2 or 0) if str(r.aspect2).replace('.','').isdigit() else 0
+                'aspect2': float(r.aspect2 or 0) if str(r.aspect2).replace('.','').isdigit() else 0,
+                'comment': str(r.comment or '無質性回饋').strip()
             })
             
         return jsonify({
