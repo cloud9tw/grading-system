@@ -1622,22 +1622,27 @@ def submit_grade():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     data = request.json
     try:
-        gc = get_gspread_client()
-        sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        doc = gc.open_by_key(sheet_id)
-        sheet = doc.worksheet('評分記錄')
         import datetime
         timestamp = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
         teacher_email = user.get('email', '')
         teacher_name = teacher_email
-        try:
-            sheet_teachers = doc.worksheet('教師名單')
-            teachers_data = safe_get_all_records(sheet_teachers)
-            for rec in teachers_data:
-                if str(rec.get('教師_Email', '')).strip().lower() == teacher_email.lower():
-                    teacher_name = str(rec.get('教師姓名', '')).strip() or teacher_name
-                    break
-        except: pass
+        
+        # 取得教師姓名 (優先使用快取)
+        def fetch_teachers():
+            try:
+                gc = get_gspread_client()
+                sheet_id = os.getenv("GOOGLE_SHEET_ID")
+                doc = gc.open_by_key(sheet_id)
+                sheet_teachers = doc.worksheet('教師名單')
+                return safe_get_all_records(sheet_teachers)
+            except: return []
+            
+        teachers_data = get_cached_data('teachers', fetch_teachers)
+        for rec in teachers_data:
+            if str(rec.get('教師_Email', '')).strip().lower() == teacher_email.lower():
+                teacher_name = str(rec.get('教師姓名', '')).strip() or teacher_name
+                break
+
         student_id = data.get('student_id', '')
         student_name = data.get('student_name', '')
         station = data.get('station', '')
@@ -1651,8 +1656,9 @@ def submit_grade():
         aspect1 = data.get('aspect1', '')
         aspect2 = data.get('aspect2', '')
         comment = data.get('comment', '')
-        row = [student_id, student_name, station, body_part, timestamp, teacher_name, opa1_sum, opa2_sum, opa3_sum] + opa1_items + opa2_items + opa3_items + [aspect1, aspect2, comment]
-        sheet.append_row(row, table_range="A1")
+
+        # --- 1. 優先寫入 BigQuery (穩定性高，不限流) ---
+        bq_success = False
         try:
             bq_client, project_id = get_bq_client()
             if bq_client:
@@ -1661,13 +1667,35 @@ def submit_grade():
                     'student_id': student_id, 'student_name': student_name, 'station': station,
                     'body_part': body_part, 'timestamp': dt_iso, 'teacher_name': teacher_name,
                     'opa1_sum': opa1_sum, 'opa2_sum': opa2_sum, 'opa3_sum': opa3_sum,
-                    'opa1_items': opa1_items, 'opa2_items': opa2_items, 'opa3_items': opa3_items,
-                    'aspect1': aspect1, 'aspect2': aspect2, 'comment': comment
+                    'opa1_items': ",".join(map(str, opa1_items)),
+                    'opa2_items': ",".join(map(str, opa2_items)),
+                    'opa3_items': ",".join(map(str, opa3_items)),
+                    'aspect1': aspect1, 'aspect2': aspect2, 'comment': comment,
+                    'is_deleted': False
                 }]
-                bq_client.insert_rows_json(f"{project_id}.grading_data.grading_logs", grade_insert)
-        except: pass
-        return jsonify({'success': True})
+                errors = bq_client.insert_rows_json(f"{project_id}.grading_data.grading_logs", grade_insert)
+                if not errors: bq_success = True
+                else: logging.error(f"BQ Insert Errors: {errors}")
+        except Exception as e:
+            logging.error(f"BQ Write FATAL: {e}")
+
+        # --- 2. 寫入 Google Sheets (作為鏡像備份，允許低機率失敗) ---
+        try:
+            gc = get_gspread_client()
+            sheet_id = os.getenv("GOOGLE_SHEET_ID")
+            doc = gc.open_by_key(sheet_id)
+            sheet = doc.worksheet('評分記錄')
+            row = [student_id, student_name, station, body_part, timestamp, teacher_name, opa1_sum, opa2_sum, opa3_sum] + opa1_items + opa2_items + opa3_items + [aspect1, aspect2, comment]
+            sheet.append_row(row, table_range="A1")
+        except Exception as e:
+            logging.warning(f"Sheets Write Failed (but BQ might be OK): {e}")
+            if not bq_success:
+                # 如果連 BQ 都沒成功，才報錯給教師
+                return jsonify({'success': False, 'error': '資料庫寫入失敗，請稍後再試。'}), 500
+
+        return jsonify({'success': True, 'msg': '評分已儲存' if bq_success else '評分已記錄至備用路徑'})
     except Exception as e:
+        logging.error(f"Submit Grade Error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 def aggregate_student_report_data(doc, bq_client, project_id):
