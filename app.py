@@ -2052,11 +2052,22 @@ def admin_view_report(student_id):
     
     # 獲取學員列表以讀取正確的姓名
     try:
+        from credentials_utils import get_gspread_client
         gc = get_gspread_client()
+        if not gc: raise Exception("無法獲取 Google Sheets 客戶端")
+        
         doc = gc.open_by_key(os.getenv("GOOGLE_SHEET_ID"))
-        sheet = doc.worksheet('學員名單')
+        # 靈活匹配工作表名稱，避免編碼或空格問題
+        all_ws = doc.worksheets()
+        sheet = next((w for w in all_ws if "學員名單" in w.title), None)
+        
+        if not sheet:
+            titles = [w.title for w in all_ws]
+            return f"找不到工作表 '學員名單'。現有的表包含: {titles}", 404
+            
         records = safe_get_all_records(sheet)
-        target = next((r for r in records if str(r.get('學生ID', '')).split('.')[0] == str(student_id)), None)
+        # ID 匹配：同樣採用靈活匹配
+        target = next((r for r in records if str(r.get('學生ID', '')).split('.')[0] == str(student_id).split('.')[0]), None)
         
         if target:
             session['student_info'] = {
