@@ -1463,8 +1463,10 @@ def get_config():
         students_records = get_cached_data('students', fetch_students)
         students = []
         for rec in students_records:
-            name = str(rec.get('姓名', '')).strip()
-            sid = str(rec.get('學生ID') or rec.get('學號') or '').split('.')[0].strip()
+            # 支援多種可能的欄位名稱
+            name = str(rec.get('姓名') or rec.get('學員姓名') or rec.get('學生姓名') or rec.get('Name') or '').strip()
+            sid = str(rec.get('學生ID') or rec.get('學號') or rec.get('ID') or '').split('.')[0].strip()
+            
             if name and sid:
                 students.append({
                     'id': sid,
@@ -2194,11 +2196,14 @@ def admin_portal():
             
         records = get_cached_data('students', fetch_students_admin)
         for r in records:
-            s_name = str(r.get('姓名', '')).strip()
-            # 兼容不同的 ID 欄位名稱
-            s_id = str(r.get('學生ID', '') or r.get('學號', '')).split('.')[0].strip()
+            # 支援多種可能的欄位名稱
+            s_name = str(r.get('姓名') or r.get('學員姓名') or r.get('學生姓名') or r.get('Name') or '').strip()
+            s_id = str(r.get('學生ID') or r.get('學號') or r.get('ID') or '').split('.')[0].strip()
+            
             if s_name and s_id:
                 students.append({'name': s_name, 'id': s_id})
+        
+        logging.info(f"Admin Portal: Loaded {len(students)} students for dropdowns.")
     except Exception as e:
         logging.error(f"Admin fetch students error: {e}")
 
