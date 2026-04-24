@@ -26,6 +26,14 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "super-secret-key-12345")
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
+# 強制 Session 設定以修復 OAuth MismatchingStateError
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=1)
+)
+
 # OAuth Setup
 oauth = OAuth(app)
 google = oauth.register(
