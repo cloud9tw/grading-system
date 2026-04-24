@@ -1422,11 +1422,25 @@ def get_config():
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         
-        # 取得學員名單
-        sheet_students = doc.worksheet('學員名單')
-        # [學生ID, 姓名, email]
-        students_records = safe_get_all_records(sheet_students)
-        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', '')), 'email': str(rec.get('Email', '')).strip().lower(), 'type': str(rec.get('學員類別', ''))} for rec in students_records if rec.get('姓名')]
+        # 取得學員名單 (確保列表不會因為單一欄位缺失而變空)
+        try:
+            ws_students = doc.worksheet('學員名單')
+            students_records = safe_get_all_records(ws_students)
+            students = []
+            for rec in students_records:
+                name = str(rec.get('姓名', '')).strip()
+                # 兼容不同的 ID 欄位名稱
+                sid = str(rec.get('學生ID') or rec.get('學號') or '').split('.')[0].strip()
+                if name and sid:
+                    students.append({
+                        'id': sid,
+                        'name': name,
+                        'email': str(rec.get('Email', '')).strip().lower(),
+                        'type': str(rec.get('學員類別') or rec.get('職級') or '未分類')
+                    })
+        except Exception as e:
+            print(f"Error loading students: {e}")
+            students = []
         
         # 取得站別OPA細項
         sheet_stations = doc.worksheet('站別OPA細項')
