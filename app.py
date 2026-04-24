@@ -125,11 +125,23 @@ def index():
         roles = session.get('roles', [])
         if current_role == 'student':
             import urllib.parse
+            # 確保使用正式 student_info，不使用 preview_student_info
             student_info = session.get('student_info', {})
+            
+            # student_info 為空時（如管理員無對應學員資料），退回教師模式
+            if not student_info or not student_info.get('id'):
+                session['current_role'] = 'teacher'
+                session.pop('preview_student_info', None)
+                session.pop('is_preview_mode', None)
+                return render_template('dashboard.html', user=user, roles=roles)
+            
             s_id = student_info.get('id', '')
             root_url = request.url_root
             target_url = f"{root_url}attendance?student_id={s_id}"
             qr_img_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={urllib.parse.quote(target_url)}"
+            # 切換至學生模式時，同步清除管理員預覽殘留狀態
+            session.pop('preview_student_info', None)
+            session.pop('is_preview_mode', None)
             return render_template('student_dashboard.html', user=user, student_info=student_info, qr_img_url=qr_img_url, roles=roles)
         else:
             return render_template('dashboard.html', user=user, roles=roles)
