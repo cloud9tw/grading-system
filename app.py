@@ -1463,21 +1463,23 @@ def get_config():
                 'desc': str(rec.get('描述', '')).strip()
             })
             
-        # 取得歷史評分紀錄次數
+        # 4. 取得歷史評分紀錄統計 (優化：改從 BigQuery 抓取以避免 Sheets 429 錯誤)
         student_stats = {}
         try:
-            sheet_records = doc.worksheet('評分記錄')
-            # 取得所有評分紀錄
-            all_records = safe_get_all_records(sheet_records)
-            for rec in all_records:
-                sid = str(rec.get('學員ID', '')).strip()
-                if not sid:
-                    sid = str(rec.get('ID', '')).strip()
+            bq_client, project_id = get_bq_client()
+            if bq_client:
+                q_stats = f"SELECT student_id, station, body_part, aspect1 FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+                stats_results = list(bq_client.query(q_stats).result(timeout=20))
                 
-                stn = str(rec.get('站別', '')).strip()
-                bpart = str(rec.get('檢查部位', '')).strip()
-                
-                if sid and stn:
+                for r in stats_results:
+                    # ID 標準化：轉字串並去掉 .0
+                    sid = str(r.student_id).split('.')[0].strip()
+                    stn = str(r.station).strip()
+                    bpart = str(r.body_part).strip()
+                    asp = str(r.aspect1).strip()
+                    
+                    if not sid or not stn: continue
+                    
                     if sid not in student_stats:
                         student_stats[sid] = {'stations': {}}
                     if stn not in student_stats[sid]['stations']:
@@ -1486,23 +1488,21 @@ def get_config():
                             'body_parts': {},
                             'aspects': {}
                         }
-                    student_stats[sid]['stations'][stn]['count'] += 1
                     
-                    if bpart:
-                        if bpart not in student_stats[sid]['stations'][stn]['body_parts']:
-                            student_stats[sid]['stations'][stn]['body_parts'][bpart] = 0
-                        student_stats[sid]['stations'][stn]['body_parts'][bpart] += 1
+                    stn_data = student_stats[sid]['stations'][stn]
+                    stn_data['count'] += 1
                     
-                    for k, v in rec.items():
-                        if '面向選擇' in str(k) and str(v).strip():
-                            m = re.match(r'^\d+', str(v).strip())
-                            if m:
-                                asp_num = m.group(0)
-                                if asp_num not in student_stats[sid]['stations'][stn]['aspects']:
-                                    student_stats[sid]['stations'][stn]['aspects'][asp_num] = 0
-                                student_stats[sid]['stations'][stn]['aspects'][asp_num] += 1
-        except Exception as sheet_err:
-            print("Error parsing 評分記錄 for stats:", sheet_err)
+                    if bpart and bpart != 'None':
+                        stn_data['body_parts'][bpart] = stn_data['body_parts'].get(bpart, 0) + 1
+                    
+                    if asp and asp != 'None':
+                        import re
+                        m = re.match(r'^\d+', asp)
+                        if m:
+                            asp_num = m.group(0)
+                            stn_data['aspects'][asp_num] = stn_data['aspects'].get(asp_num, 0) + 1
+        except Exception as bq_err:
+            print(f"Error calculating stats from BQ: {bq_err}")
             
         return jsonify({
             'success': True,
