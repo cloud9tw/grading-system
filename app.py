@@ -1476,17 +1476,19 @@ def get_config():
         try:
             bq_client, project_id = get_bq_client()
             if bq_client:
-                q_stats = f"SELECT student_id, station, body_part, aspect1 FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
+                # 抓取 student_id, station, body_part, 以及兩個面向欄位
+                q_stats = f"SELECT student_id, station, body_part, aspect1, aspect2 FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
                 stats_results = list(bq_client.query(q_stats).result(timeout=20))
                 
                 for r in stats_results:
-                    # ID 標準化：轉字串並去掉 .0
-                    sid = str(r.student_id).split('.')[0].strip()
+                    # ID 標準化：去掉可能的小數點，並確保為字串
+                    sid_raw = str(r.student_id).strip()
+                    sid = sid_raw.split('.')[0] if '.' in sid_raw else sid_raw
+                    
                     stn = str(r.station).strip()
                     bpart = str(r.body_part).strip()
-                    asp = str(r.aspect1).strip()
                     
-                    if not sid or not stn: continue
+                    if not sid or not stn or stn == 'None': continue
                     
                     if sid not in student_stats:
                         student_stats[sid] = {'stations': {}}
@@ -1503,14 +1505,17 @@ def get_config():
                     if bpart and bpart != 'None':
                         stn_data['body_parts'][bpart] = stn_data['body_parts'].get(bpart, 0) + 1
                     
-                    if asp and asp != 'None':
-                        import re
-                        m = re.match(r'^\d+', asp)
-                        if m:
-                            asp_num = m.group(0)
-                            stn_data['aspects'][asp_num] = stn_data['aspects'].get(asp_num, 0) + 1
+                    # 統計面向 (在 BQ 中 aspect1, aspect2 存的是面向編號 1~5)
+                    for asp_val in [r.aspect1, r.aspect2]:
+                        if asp_val:
+                            # 提取數字部分
+                            import re
+                            m = re.search(r'\d+', str(asp_val))
+                            if m:
+                                asp_num = m.group(0)
+                                stn_data['aspects'][asp_num] = stn_data['aspects'].get(asp_num, 0) + 1
         except Exception as bq_err:
-            print(f"Error calculating stats from BQ: {bq_err}")
+            logging.error(f"Error calculating stats from BQ: {bq_err}")
             
         return jsonify({
             'success': True,
