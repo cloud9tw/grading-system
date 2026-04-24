@@ -2028,12 +2028,16 @@ def view_shared_dashboard(token):
     if not share_info:
         return f"<h1>分享連結無效或已過期</h1><p>請聯繫管理員重新產生連結。</p>", 403
     
-    session['user'] = {'name': f"外部查核員 (觀看 {share_info['name']})", 'email': 'guest@shared.view', 'picture': ''}
-    session['current_role'] = 'student'
+    # 設定分享視圖參數，但不強制覆蓋現有 user session (如果是管理員在預覽)
     session['is_shared_view'] = True
     session['shared_student_id'] = share_info['id']
     session['shared_student_name'] = share_info['name']
     session['student_info'] = share_info
+    
+    # 只有在未登入狀態下才賦予虛擬查核員身份
+    if not session.get('user'):
+        session['user'] = {'name': f"外部查核員 (觀看 {share_info['name']})", 'email': 'guest@shared.view', 'picture': ''}
+        session['current_role'] = 'student'
     
     return redirect(url_for('student_pro_report'))
 
