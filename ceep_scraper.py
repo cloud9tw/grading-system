@@ -36,6 +36,10 @@ async def scrape_ceep_all_forms(callback=None):
     # 計算學年度 (7月為界)
     N = (now.year - 1911) if now.month >= 7 else (now.year - 1912)
     
+    # 預設 CEEP 登入資訊 (優先讀取環境變數)
+    CEEP_ACCOUNT = os.getenv("CEEP_ACCOUNT", "15680")
+    CEEP_PASSWORD = os.getenv("CEEP_PASSWORD", "4249")
+
     # 抓取表單清單 (對應 Google Sheets 分頁名稱 : CEEP 表單完整名稱)
     TARGET_FORMS = {
         "CEEP_DOPS": "醫學影像技術學-操作技能直接觀察(DOPS)評量表",
@@ -81,8 +85,8 @@ async def scrape_ceep_all_forms(callback=None):
 
         # Login
         await report("--- 正在執行登入作業 ---")
-        await page.fill('input[name="account"]', "15680")
-        await page.fill('input[name="password"]', "4249")
+        await page.fill('input[name="account"]', CEEP_ACCOUNT)
+        await page.fill('input[name="password"]', CEEP_PASSWORD)
         
         async with page.expect_navigation():
             await page.click('button[type="submit"]')

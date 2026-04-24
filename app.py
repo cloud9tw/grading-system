@@ -163,6 +163,36 @@ def send_attendance_alert_email(student_name, teacher_name, sub_room, action, ti
     except Exception as e:
         print(f"發送出勤警報失敗: {e}")
 
+def send_access_request_email(teacher_name, teacher_email):
+    sender_email = os.getenv("SENDER_EMAIL")
+    sender_password = os.getenv("SENDER_PASSWORD")
+    admin_emails = os.getenv("NOTIFY_EMAILS")
+    
+    if not sender_email or not sender_password or not admin_emails:
+        print("未設定 Email 環境變數，無法發送申請通知。")
+        return
+        
+    msg = EmailMessage()
+    subject = f"🔔 [權限申請] 新教師登入權限請求 - {teacher_name}"
+    body = f"【學員評分系統 - 權限申請通知】\n\n有新教師申請使用個人 Google 帳號登入系統：\n\n"
+    body += f"● 教師姓名：{teacher_name}\n"
+    body += f"● Gmail 帳號：{teacher_email}\n\n"
+    body += f"請管理員核對身分後，將此 Email 新增至「教師名單」試算表中以開通權限。\n\n"
+    body += f"※ 此為系統自動發送之申請信件，請勿回覆。"
+    
+    msg.set_content(body)
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = admin_emails
+    
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(sender_email, sender_password)
+            smtp.send_message(msg)
+            print(f"✅ 成功將 {teacher_name} 的權限申請發送給管理員")
+    except Exception as e:
+        print(f"❌ 發送權限申請失敗: {e}")
+
 def send_feedback_anomaly_email(admin_emails, data, triggers):
     sender_email = os.getenv("SENDER_EMAIL")
     sender_password = os.getenv("SENDER_PASSWORD")
@@ -239,6 +269,19 @@ def login():
     # ===== 正常 OAuth 流程 =====
     redirect_uri = url_for('authorize', _external=True)
     return google.authorize_redirect(redirect_uri)
+
+@app.route('/api/request_access', methods=['POST'])
+def request_access():
+    teacher_name = request.form.get('teacher_name', '').strip()
+    teacher_email = request.form.get('teacher_email', '').strip()
+    
+    if not teacher_name or not teacher_email:
+        return "請提供姓名與 Email", 400
+        
+    # 非同步發送郵件
+    threading.Thread(target=send_access_request_email, args=(teacher_name, teacher_email)).start()
+    
+    return redirect('/?request_sent=1')
 
 @app.route('/authorize')
 def authorize():
