@@ -1426,7 +1426,7 @@ def get_config():
         sheet_students = doc.worksheet('學員名單')
         # [學生ID, 姓名, email]
         students_records = safe_get_all_records(sheet_students)
-        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', '')), 'email': str(rec.get('Email', '')).strip().lower()} for rec in students_records if rec.get('姓名')]
+        students = [{'id': str(rec.get('學生ID', '')), 'name': str(rec.get('姓名', '')), 'email': str(rec.get('Email', '')).strip().lower(), 'type': str(rec.get('學員類別', ''))} for rec in students_records if rec.get('姓名')]
         
         # 取得站別OPA細項
         sheet_stations = doc.worksheet('站別OPA細項')
@@ -2036,8 +2036,17 @@ def view_shared_dashboard(token):
     
     # 設定分享視圖參數，但不強制覆蓋現有 user session (如果是管理員在預覽)
     session['is_shared_view'] = True
-    session['shared_student_id'] = share_info['id']
-    session['shared_student_name'] = share_info['name']
+    # 補抓學員類別以顯示基準線
+    try:
+        gc = get_gspread_client()
+        doc = gc.open_by_key(os.getenv("GOOGLE_SHEET_ID"))
+        sheet = doc.worksheet('學員名單')
+        records = safe_get_all_records(sheet)
+        target = next((r for r in records if str(r.get('學生ID', '')).split('.')[0] == str(share_info['id'])), None)
+        if target:
+            share_info['type'] = str(target.get('學員類別', ''))
+    except: pass
+
     session['student_info'] = share_info
     
     # 只有在未登入狀態下才賦予虛擬查核員身份
@@ -2074,7 +2083,8 @@ def admin_view_report(student_id):
         if target:
             session['student_info'] = {
                 'id': str(target.get('學生ID', '')),
-                'name': str(target.get('姓名', ''))
+                'name': str(target.get('姓名', '')),
+                'type': str(target.get('學員類別', ''))
             }
             session['is_shared_view'] = False # 管理員身份預覽
             return redirect(url_for('student_pro_report'))

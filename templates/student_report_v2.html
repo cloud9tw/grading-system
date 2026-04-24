@@ -258,12 +258,27 @@
         function updateTrendsChart(data) {
             const ctx = document.getElementById('trendsChart').getContext('2d');
             const recent = data.slice(-15);
+            
+            // 決定參考線分數
+            const studentType = "{{ student_info.type }}";
+            const refScore = (studentType.includes('PGY') || studentType.includes('住院醫師')) ? 6 : 3;
+            
             const chartData = {
                 labels: recent.map(l => l.m_d),
                 datasets: [
-                    { label: 'OPA1', data: recent.map(l => l.opa1), borderColor: '#6366f1', tension: 0.4, borderWidth: 3 },
-                    { label: 'OPA2', data: recent.map(l => l.opa2), borderColor: '#10b981', tension: 0.4, borderWidth: 3 },
-                    { label: 'OPA3', data: recent.map(l => l.opa3), borderColor: '#8b5cf6', tension: 0.4, borderWidth: 3 }
+                    { 
+                        label: '及格基準', 
+                        data: new Array(recent.length).fill(refScore), 
+                        borderColor: '#ef4444', 
+                        borderDash: [5, 5], 
+                        pointRadius: 0,
+                        fill: false,
+                        borderWidth: 2,
+                        order: 0
+                    },
+                    { label: 'OPA1', data: recent.map(l => l.opa1), borderColor: '#6366f1', tension: 0.4, borderWidth: 3, order: 1 },
+                    { label: 'OPA2', data: recent.map(l => l.opa2), borderColor: '#10b981', tension: 0.4, borderWidth: 3, order: 2 },
+                    { label: 'OPA3', data: recent.map(l => l.opa3), borderColor: '#8b5cf6', tension: 0.4, borderWidth: 3, order: 3 }
                 ]
             };
             if(charts.trends) charts.trends.destroy();
@@ -272,7 +287,9 @@
                 data: chartData, 
                 options: { 
                     maintainAspectRatio: false,
-                    scales: { y: { min: 0, max: 10 } }
+                    scales: { 
+                        y: { min: 0, max: 10, ticks: { stepSize: 1 } } 
+                    }
                 } 
             });
         }
