@@ -1948,9 +1948,15 @@ def generate_share_link(student_id):
 @app.route('/api/student_report_data')
 def get_student_report_data():
     is_shared = session.get('is_shared_view', False)
+    is_preview = session.get('is_preview_mode', False)
+    
     if is_shared:
         target_id = session.get('shared_student_id')
         target_name = session.get('shared_student_name')
+    elif is_preview:
+        preview_info = session.get('preview_student_info', {})
+        target_id = str(preview_info.get('id', '')).split('.')[0].strip()
+        target_name = str(preview_info.get('name', '')).strip()
     else:
         user = session.get('user')
         if not user: return jsonify({'success': False, 'error': 'Unauthorized'}), 401
@@ -2023,8 +2029,12 @@ def get_share_info_by_token(token):
 @app.route('/student/pro_report')
 def student_pro_report():
     is_shared = session.get('is_shared_view', False)
-    student_info = session.get('student_info')
-    if not is_shared and not session.get('user'):
+    is_preview = session.get('is_preview_mode', False)
+    
+    # 優先從預覽或分享資訊中獲取
+    student_info = session.get('preview_student_info') or session.get('student_info')
+    
+    if not is_shared and not is_preview and not session.get('user'):
         return redirect(url_for('login'))
     return render_template('student_report_v2.html', student_info=student_info)
 
@@ -2081,12 +2091,12 @@ def admin_view_report(student_id):
         target = next((r for r in records if str(r.get('學生ID', '')).split('.')[0] == str(student_id).split('.')[0]), None)
         
         if target:
-            session['student_info'] = {
+            session['preview_student_info'] = {
                 'id': str(target.get('學生ID', '')),
                 'name': str(target.get('姓名', '')),
                 'type': str(target.get('學員類別', ''))
             }
-            session['is_shared_view'] = False # 管理員身份預覽
+            session['is_preview_mode'] = True
             return redirect(url_for('student_pro_report'))
     except Exception as e:
         return f"載入失敗: {e}", 500
@@ -2390,10 +2400,16 @@ def api_admin_attendance_anomalies():
 
 @app.route('/api/pending_epa_feedbacks')
 def get_pending_epa_feedbacks():
-    user = session.get('user')
-    student_info = session.get('student_info')
-    if not user or not student_info:
+    is_shared = session.get('is_shared_view', False)
+    is_preview = session.get('is_preview_mode', False)
+    student_info = session.get('preview_student_info') or session.get('student_info')
+    
+    if not student_info:
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
+    
+    if not is_shared and not is_preview:
+        if not session.get('user'):
+            return jsonify({'success': False, 'error': 'Unauthorized'}), 401
     
     student_id = student_info.get('id')
     try:
