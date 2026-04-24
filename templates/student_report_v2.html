@@ -19,6 +19,7 @@
             background-color: #4f46e5;
             color: white;
             border-color: #4f46e5;
+            box-shadow: 0 4px 6px -1px rgb(79 70 229 / 0.2);
         }
     </style>
 </head>
@@ -63,11 +64,14 @@
             </div>
         </div>
 
-        <!-- Station Tabs -->
+        <!-- Station Tabs (Multi-select) -->
         <div class="px-10 py-4 bg-slate-50 border-b border-slate-200 no-print overflow-x-auto whitespace-nowrap">
-            <div class="flex gap-2" id="stationTabs">
-                <button id="tab-ALL" onclick="filterByStation('ALL')" class="station-tab active px-6 py-2 rounded-full text-sm font-bold border transition-all">全部站別</button>
-                <!-- 動態插入 -->
+            <div class="flex items-center gap-4">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">站別篩選 (多選):</span>
+                <div class="flex gap-2" id="stationTabs">
+                    <button id="btn-toggle-all" onclick="toggleAllStations()" class="px-6 py-2 rounded-full text-sm font-bold border transition-all bg-slate-800 text-white">全選/取消</button>
+                    <!-- 動態插入 -->
+                </div>
             </div>
         </div>
 
@@ -78,7 +82,7 @@
             <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
                 <h3 class="font-black text-slate-800 flex items-center gap-2 mb-6">
                     <span class="w-2 h-6 bg-indigo-600 rounded-full"></span>
-                    檢查歷次整體任務之評定
+                    歷次任務評定趨勢 (OPA1-3)
                 </h3>
                 <div class="h-64">
                     <canvas id="trendsChart"></canvas>
@@ -93,7 +97,7 @@
                         信賴等級分佈統計
                     </h3>
                     <div class="bg-white px-3 py-1 rounded-full border text-xs font-bold text-slate-500">
-                        總評次數: <span id="totalCount" class="text-emerald-600">0</span>
+                        選中次數: <span id="totalCount" class="text-emerald-600">0</span>
                     </div>
                 </div>
                 <div class="h-64 flex items-center justify-center">
@@ -105,7 +109,7 @@
             <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200 flex flex-col">
                 <h3 class="font-black text-slate-800 flex items-center gap-2 mb-10">
                     <span class="w-2 h-6 bg-orange-500 rounded-full"></span>
-                    整體任務評定平均值
+                    平均信賴指數 (Proficiency)
                 </h3>
                 <div class="flex-1 flex flex-col items-center justify-center relative">
                     <div class="w-72 h-36">
@@ -122,7 +126,7 @@
             <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
                 <h3 class="font-black text-slate-800 flex items-center gap-2 mb-6">
                     <span class="w-2 h-6 bg-purple-500 rounded-full"></span>
-                    檢查任務評定結果分布
+                    任務評定次數分佈
                 </h3>
                 <div class="h-64">
                     <canvas id="distributionChart"></canvas>
@@ -167,6 +171,7 @@
 
         let rawLogs = [];
         let charts = {};
+        let activeStations = new Set();
 
         async function initReport() {
             try {
@@ -179,36 +184,62 @@
                 // 產生站別標籤
                 const stations = [...new Set(rawLogs.map(l => l.station))].sort();
                 const tabContainer = document.getElementById('stationTabs');
+                
                 stations.forEach(st => {
                     const btn = document.createElement('button');
-                    btn.className = 'station-tab px-6 py-2 rounded-full text-sm font-bold border transition-all bg-white text-slate-500 border-slate-200 hover:border-indigo-400';
+                    btn.className = 'station-tab active px-6 py-2 rounded-full text-sm font-bold border transition-all bg-indigo-600 text-white border-indigo-600';
                     btn.textContent = st;
-                    btn.onclick = () => filterByStation(st, btn);
+                    btn.dataset.station = st;
+                    btn.onclick = () => toggleStation(st, btn);
                     tabContainer.appendChild(btn);
+                    activeStations.add(st);
                 });
 
-                filterByStation('ALL');
+                updateDashboard();
 
             } catch (e) {
                 alert("載入失敗: " + e.message);
             }
         }
 
-        function filterByStation(st, btn = null) {
-            document.querySelectorAll('.station-tab').forEach(b => {
-                b.classList.remove('active', 'bg-indigo-600', 'text-white');
-                b.classList.add('bg-white', 'text-slate-500', 'border-slate-200');
-            });
-            
-            const activeBtn = btn || document.getElementById('tab-ALL');
-            activeBtn.classList.add('active', 'bg-indigo-600', 'text-white');
-            activeBtn.classList.remove('bg-white', 'text-slate-500');
-
-            const filteredData = st === 'ALL' ? rawLogs : rawLogs.filter(l => l.station === st);
-            updateDashboard(filteredData);
+        function toggleStation(st, btn) {
+            if (activeStations.has(st)) {
+                activeStations.delete(st);
+                btn.classList.remove('active', 'bg-indigo-600', 'text-white', 'border-indigo-600');
+                btn.classList.add('bg-white', 'text-slate-500', 'border-slate-200');
+            } else {
+                activeStations.add(st);
+                btn.classList.add('active', 'bg-indigo-600', 'text-white', 'border-indigo-600');
+                btn.classList.remove('bg-white', 'text-slate-500', 'border-slate-200');
+            }
+            updateDashboard();
         }
 
-        function updateDashboard(data) {
+        function toggleAllStations() {
+            const btns = document.querySelectorAll('.station-tab[data-station]');
+            const stations = [...new Set(rawLogs.map(l => l.station))];
+            
+            if (activeStations.size === stations.length) {
+                // 全部取消
+                activeStations.clear();
+                btns.forEach(btn => {
+                    btn.classList.remove('active', 'bg-indigo-600', 'text-white', 'border-indigo-600');
+                    btn.classList.add('bg-white', 'text-slate-500', 'border-slate-200');
+                });
+            } else {
+                // 全部選中
+                stations.forEach(st => activeStations.add(st));
+                btns.forEach(btn => {
+                    btn.classList.add('active', 'bg-indigo-600', 'text-white', 'border-indigo-600');
+                    btn.classList.remove('bg-white', 'text-slate-500', 'border-slate-200');
+                });
+            }
+            updateDashboard();
+        }
+
+        function updateDashboard() {
+            const data = rawLogs.filter(l => activeStations.has(l.station));
+            
             const totalCount = data.length;
             const avgScore = data.length > 0 ? data.reduce((sum, l) => sum + l.aspect2, 0) / data.length : 0;
             const levelDist = {};
@@ -230,13 +261,20 @@
             const chartData = {
                 labels: recent.map(l => l.m_d),
                 datasets: [
-                    { label: 'OPA1', data: recent.map(l => l.opa1), borderColor: '#6366f1', tension: 0.4 },
-                    { label: 'OPA2', data: recent.map(l => l.opa2), borderColor: '#10b981', tension: 0.4 },
-                    { label: 'OPA3', data: recent.map(l => l.opa3), borderColor: '#8b5cf6', tension: 0.4 }
+                    { label: 'OPA1', data: recent.map(l => l.opa1), borderColor: '#6366f1', tension: 0.4, borderWidth: 3 },
+                    { label: 'OPA2', data: recent.map(l => l.opa2), borderColor: '#10b981', tension: 0.4, borderWidth: 3 },
+                    { label: 'OPA3', data: recent.map(l => l.opa3), borderColor: '#8b5cf6', tension: 0.4, borderWidth: 3 }
                 ]
             };
             if(charts.trends) charts.trends.destroy();
-            charts.trends = new Chart(ctx, { type: 'line', data: chartData, options: { maintainAspectRatio: false } });
+            charts.trends = new Chart(ctx, { 
+                type: 'line', 
+                data: chartData, 
+                options: { 
+                    maintainAspectRatio: false,
+                    scales: { y: { min: 0, max: 10 } }
+                } 
+            });
         }
 
         function updateLevelsChart(dist) {
