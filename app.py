@@ -1957,32 +1957,23 @@ def get_student_report_data():
         ])
         results = list(bq_client.query(q, job_config=job_config).result(timeout=20))
         
-        level_dist = {}
+        # 返回原始數據供前端動態切換站別
+        raw_logs = []
         for r in results:
-            lv = str(r.aspect1 or '未評定').strip()
-            level_dist[lv] = level_dist.get(lv, 0) + 1
-            
-        trends = []
-        for r in results:
-            def to_f(v): 
-                try: return float(v)
-                except: return 0.0
-            trends.append({
-                'date': r.timestamp.strftime('%m/%d'),
-                'opa1': to_f(r.opa1_sum),
-                'opa2': to_f(r.opa2_sum),
-                'opa3': to_f(r.opa3_sum)
+            raw_logs.append({
+                'station': str(r.station or '未知'),
+                'date': r.timestamp.strftime('%Y-%m-%d'),
+                'm_d': r.timestamp.strftime('%m/%d'),
+                'opa1': float(r.opa1_sum or 0) if str(r.opa1_sum).replace('.','').isdigit() else 0,
+                'opa2': float(r.opa2_sum or 0) if str(r.opa2_sum).replace('.','').isdigit() else 0,
+                'opa3': float(r.opa3_sum or 0) if str(r.opa3_sum).replace('.','').isdigit() else 0,
+                'aspect1': str(r.aspect1 or '未評定').strip(),
+                'aspect2': float(r.aspect2 or 0) if str(r.aspect2).replace('.','').isdigit() else 0
             })
             
-        all_scores = [float(r.aspect2) for r in results if r.aspect2 and str(r.aspect2).replace('.','').isdigit()]
-        avg_score = round(sum(all_scores) / len(all_scores), 2) if all_scores else 0
-        
         return jsonify({
             'success': True,
-            'total_count': len(results),
-            'level_dist': level_dist,
-            'trends': trends,
-            'avg_score': avg_score
+            'raw_logs': raw_logs
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500

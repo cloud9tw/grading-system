@@ -15,6 +15,11 @@
             .no-print { display: none; }
             .print-break { page-break-after: always; }
         }
+        .station-tab.active {
+            background-color: #4f46e5;
+            color: white;
+            border-color: #4f46e5;
+        }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen">
@@ -25,10 +30,9 @@
             <h1 class="font-bold text-slate-800">Pro 視覺化成長報告</h1>
         </div>
         <div class="flex gap-3">
-            <button onclick="window.history.back()" class="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium transition">返回儀表板</button>
+            <button onclick="window.history.back()" class="px-4 py-2 text-slate-600 hover:bg-slate-50 rounded-lg text-sm font-medium transition">返回</button>
             <button onclick="exportToPDF()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold shadow-lg shadow-indigo-200 transition flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                匯出專業 PDF
+                匯出 PDF
             </button>
         </div>
     </div>
@@ -59,21 +63,26 @@
             </div>
         </div>
 
+        <!-- Station Tabs -->
+        <div class="px-10 py-4 bg-slate-50 border-b border-slate-200 no-print overflow-x-auto whitespace-nowrap">
+            <div class="flex gap-2" id="stationTabs">
+                <button id="tab-ALL" onclick="filterByStation('ALL')" class="station-tab active px-6 py-2 rounded-full text-sm font-bold border transition-all">全部站別</button>
+                <!-- 動態插入 -->
+            </div>
+        </div>
+
         <!-- 2x2 Grid Charts -->
         <div class="p-10 grid grid-cols-1 lg:grid-cols-2 gap-10">
             
             <!-- Trend Line Chart -->
             <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="font-black text-slate-800 flex items-center gap-2">
-                        <span class="w-2 h-6 bg-indigo-600 rounded-full"></span>
-                        檢查歷次整體任務之評定
-                    </h3>
-                </div>
+                <h3 class="font-black text-slate-800 flex items-center gap-2 mb-6">
+                    <span class="w-2 h-6 bg-indigo-600 rounded-full"></span>
+                    檢查歷次整體任務之評定
+                </h3>
                 <div class="h-64">
                     <canvas id="trendsChart"></canvas>
                 </div>
-                <p class="text-[10px] text-slate-400 mt-4 text-center">追蹤 OPA1(準備)、OPA2(執行)、OPA3(後處置) 隨時間之變化曲線</p>
             </div>
 
             <!-- Level Distribution Pie Chart -->
@@ -104,7 +113,7 @@
                     </div>
                     <div class="text-center -mt-8">
                         <div id="avgScoreText" class="text-6xl font-black text-slate-900 tracking-tighter">0.00</div>
-                        <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">Overall Proficiency Index</div>
+                        <div class="text-xs font-bold text-slate-400 uppercase tracking-widest mt-2">Proficiency Index</div>
                     </div>
                 </div>
             </div>
@@ -126,21 +135,19 @@
         <div class="px-10 pb-12">
             <h3 class="font-black text-slate-800 flex items-center gap-2 mb-6 uppercase tracking-wider">
                 <span class="w-2 h-6 bg-slate-800 rounded-full"></span>
-                整體任務評定結果列表 (近 15 筆)
+                詳細評定紀錄列表
             </h3>
             <div class="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-slate-900 text-white">
+                    <thead class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest">
                         <tr>
-                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">評核教師</th>
-                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">日期</th>
-                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">站別</th>
-                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest">評核項目</th>
-                            <th class="px-6 py-4 text-[11px] font-bold uppercase tracking-widest text-right">整體評價</th>
+                            <th class="px-6 py-4">日期</th>
+                            <th class="px-6 py-4">站別</th>
+                            <th class="px-6 py-4 text-right">整體評價</th>
                         </tr>
                     </thead>
                     <tbody id="logsTable" class="text-sm divide-y divide-slate-100">
-                        <!-- Data rows injected by JS -->
+                        <!-- Data rows -->
                     </tbody>
                 </table>
             </div>
@@ -148,16 +155,16 @@
 
         <!-- Footer -->
         <div class="bg-slate-50 px-10 py-6 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-400 font-medium">
-            <div>系統自動產生於 {{ request.host }} • 僅供臨床教學參考</div>
-            <div class="flex gap-4">
-                <span>EPA-GRADING-SYSTEM v2.0</span>
-                <span>AUTHENTICATED PORTFOLIO</span>
-            </div>
+            <div>系統自動產生 • 僅供臨床教學參考</div>
+            <div>EPA-GRADING-SYSTEM v2.0</div>
         </div>
     </main>
 
     <script>
         document.getElementById('reportDate').textContent = new Date().toLocaleDateString('zh-TW');
+
+        let rawLogs = [];
+        let charts = {};
 
         async function initReport() {
             try {
@@ -165,138 +172,127 @@
                 const result = await res.json();
                 if (!result.success) throw new Error(result.error);
 
-                const data = result;
-                document.getElementById('totalCount').textContent = data.total_count;
-                document.getElementById('avgScoreText').textContent = data.avg_score.toFixed(2);
+                rawLogs = result.raw_logs;
+                
+                // 產生站別標籤
+                const stations = [...new Set(rawLogs.map(l => l.station))].sort();
+                const tabContainer = document.getElementById('stationTabs');
+                stations.forEach(st => {
+                    const btn = document.createElement('button');
+                    btn.className = 'station-tab px-6 py-2 rounded-full text-sm font-bold border transition-all bg-white text-slate-500 border-slate-200 hover:border-indigo-400';
+                    btn.textContent = st;
+                    btn.onclick = () => filterByStation(st, btn);
+                    tabContainer.appendChild(btn);
+                });
 
-                renderTrends(data.trends);
-                renderLevels(data.level_dist);
-                renderGauge(data.avg_score);
-                renderDistribution(data.level_dist);
-                renderLogs();
+                filterByStation('ALL');
 
             } catch (e) {
-                console.error("Failed to load report data:", e);
-                alert("載入報表數據失敗: " + e.message);
+                alert("載入失敗: " + e.message);
             }
         }
 
-        function renderTrends(trends) {
+        function filterByStation(st, btn = null) {
+            document.querySelectorAll('.station-tab').forEach(b => {
+                b.classList.remove('active', 'bg-indigo-600', 'text-white');
+                b.classList.add('bg-white', 'text-slate-500', 'border-slate-200');
+            });
+            
+            const activeBtn = btn || document.getElementById('tab-ALL');
+            activeBtn.classList.add('active', 'bg-indigo-600', 'text-white');
+            activeBtn.classList.remove('bg-white', 'text-slate-500');
+
+            const filteredData = st === 'ALL' ? rawLogs : rawLogs.filter(l => l.station === st);
+            updateDashboard(filteredData);
+        }
+
+        function updateDashboard(data) {
+            const totalCount = data.length;
+            const avgScore = data.length > 0 ? data.reduce((sum, l) => sum + l.aspect2, 0) / data.length : 0;
+            const levelDist = {};
+            data.forEach(l => { levelDist[l.aspect1] = (levelDist[l.aspect1] || 0) + 1; });
+
+            document.getElementById('totalCount').textContent = totalCount;
+            document.getElementById('avgScoreText').textContent = avgScore.toFixed(2);
+
+            updateTrendsChart(data);
+            updateLevelsChart(levelDist);
+            updateGaugeChart(avgScore);
+            updateDistributionChart(levelDist);
+            updateLogsTable(data);
+        }
+
+        function updateTrendsChart(data) {
             const ctx = document.getElementById('trendsChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: trends.slice(-10).map(t => t.date),
-                    datasets: [
-                        { label: 'OPA1', data: trends.slice(-10).map(t => t.opa1), borderColor: '#6366f1', backgroundColor: '#6366f122', tension: 0.4, borderWidth: 3, pointRadius: 4 },
-                        { label: 'OPA2', data: trends.slice(-10).map(t => t.opa2), borderColor: '#10b981', backgroundColor: '#10b98122', tension: 0.4, borderWidth: 3, pointRadius: 4 },
-                        { label: 'OPA3', data: trends.slice(-10).map(t => t.opa3), borderColor: '#8b5cf6', backgroundColor: '#8b5cf622', tension: 0.4, borderWidth: 3, pointRadius: 4 }
-                    ]
-                },
-                options: { maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { font: { weight: 'bold', size: 10 } } } }, scales: { y: { min: 0, max: 10, grid: { display: false } } } }
-            });
+            const recent = data.slice(-15);
+            const chartData = {
+                labels: recent.map(l => l.m_d),
+                datasets: [
+                    { label: 'OPA1', data: recent.map(l => l.opa1), borderColor: '#6366f1', tension: 0.4 },
+                    { label: 'OPA2', data: recent.map(l => l.opa2), borderColor: '#10b981', tension: 0.4 },
+                    { label: 'OPA3', data: recent.map(l => l.opa3), borderColor: '#8b5cf6', tension: 0.4 }
+                ]
+            };
+            if(charts.trends) charts.trends.destroy();
+            charts.trends = new Chart(ctx, { type: 'line', data: chartData, options: { maintainAspectRatio: false } });
         }
 
-        function renderLevels(dist) {
+        function updateLevelsChart(dist) {
             const ctx = document.getElementById('levelsChart').getContext('2d');
-            const labels = Object.keys(dist);
-            const values = Object.values(dist);
-            const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899'];
-
-            new Chart(ctx, {
+            if(charts.levels) charts.levels.destroy();
+            charts.levels = new Chart(ctx, {
                 type: 'doughnut',
-                data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
-                options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } } } } }
+                data: { labels: Object.keys(dist), datasets: [{ data: Object.values(dist), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'] }] },
+                options: { maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right' } } }
             });
         }
 
-        function renderGauge(val) {
+        function updateGaugeChart(val) {
             const ctx = document.getElementById('gaugeChart').getContext('2d');
-            new Chart(ctx, {
+            if(charts.gauge) charts.gauge.destroy();
+            charts.gauge = new Chart(ctx, {
                 type: 'doughnut',
-                data: {
-                    datasets: [{
-                        data: [val, 6 - val],
-                        backgroundColor: ['#f59e0b', '#e2e8f0'],
-                        borderWidth: 0
-                    }]
-                },
-                options: {
-                    rotation: 270,
-                    circumference: 180,
-                    cutout: '85%',
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, tooltip: { enabled: false } }
-                }
+                data: { datasets: [{ data: [val, 6 - val], backgroundColor: ['#f59e0b', '#e2e8f0'] }] },
+                options: { rotation: 270, circumference: 180, cutout: '85%', maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
         }
 
-        function renderDistribution(dist) {
+        function updateDistributionChart(dist) {
             const ctx = document.getElementById('distributionChart').getContext('2d');
-            new Chart(ctx, {
+            if(charts.dist) charts.dist.destroy();
+            charts.dist = new Chart(ctx, {
                 type: 'bar',
-                data: {
-                    labels: Object.keys(dist),
-                    datasets: [{
-                        label: '評定頻率',
-                        data: Object.values(dist),
-                        backgroundColor: '#8b5cf6',
-                        borderRadius: 8
-                    }]
-                },
-                options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, grid: { borderDash: [5,5] } } } }
+                data: { labels: Object.keys(dist), datasets: [{ label: '次數', data: Object.values(dist), backgroundColor: '#8b5cf6', borderRadius: 8 }] },
+                options: { maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
         }
 
-        async function renderLogs() {
-            try {
-                // 從現有的 api/student_stats 抓取詳細紀錄 (雖然 report_data 也有，但這個比較齊全)
-                const res = await fetch('/api/student_stats');
-                const result = await res.json();
-                const tbody = document.getElementById('logsTable');
-                
-                let allLogs = [];
-                Object.keys(result.data).forEach(stn => {
-                    result.data[stn].forEach(log => {
-                        allLogs.append({...log, station: stn});
-                    });
-                });
-                
-                // 依時間排序並取前 15
-                allLogs.sort((a,b) => new Date(b.time) - new Date(a.time));
-                
-                allLogs.slice(0, 15).forEach(log => {
-                    const tr = document.createElement('tr');
-                    tr.className = "hover:bg-slate-50 transition";
-                    tr.innerHTML = `
-                        <td class="px-6 py-4 font-bold text-slate-700">${log.teacher}</td>
-                        <td class="px-6 py-4 text-slate-500 font-mono text-[11px]">${log.time.split(' ')[0]}</td>
-                        <td class="px-6 py-4"><span class="bg-indigo-50 text-indigo-700 text-[10px] font-black px-2 py-1 rounded-md uppercase">${log.station}</span></td>
-                        <td class="px-6 py-4 text-slate-400 text-xs truncate max-w-[200px]">${log.comment || '無質性回饋'}</td>
-                        <td class="px-6 py-4 text-right font-black text-slate-900">${log.aspect1 || '-'}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch(e) {}
+        function updateLogsTable(data) {
+            const tbody = document.getElementById('logsTable');
+            tbody.innerHTML = '';
+            data.slice().reverse().forEach(log => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="px-6 py-4 text-slate-500 font-mono text-[11px]">${log.date}</td>
+                    <td class="px-6 py-4"><span class="bg-indigo-50 text-indigo-700 text-[10px] font-black px-2 py-1 rounded-md uppercase">${log.station}</span></td>
+                    <td class="px-6 py-4 text-right font-black text-slate-900">${log.aspect1}</td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
 
         async function exportToPDF() {
             const { jsPDF } = window.jspdf;
             const element = document.getElementById('report-content');
-            
             try {
                 const canvas = await html2canvas(element, { scale: 2, useCORS: true });
                 const imgData = canvas.toDataURL('image/png');
                 const pdf = new jsPDF('p', 'mm', 'a4');
-                const imgProps = pdf.getImageProperties(imgData);
                 const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-                
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
                 pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
                 pdf.save(`${document.getElementById('studentName').textContent}_成長報告.pdf`);
-            } catch (err) {
-                alert("PDF 匯出失敗: " + err.message);
-            }
+            } catch (err) { alert("PDF 匯出失敗"); }
         }
 
         initReport();
