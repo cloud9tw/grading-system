@@ -285,7 +285,11 @@
                     configData = data;
                     initForm();
                 } else {
-                    showError('無法載入系統設定：' + data.error);
+                    if (data.error && (data.error.includes('429') || data.error.includes('Quota exceeded'))) {
+                        showError('超過系統限額，請 10 秒後重新整理');
+                    } else {
+                        showError('無法載入系統設定：' + data.error);
+                    }
                 }
             } catch (err) {
                 showError('載入系統設定發生網路錯誤。');
