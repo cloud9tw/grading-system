@@ -343,15 +343,50 @@
         async function exportToPDF() {
             const { jsPDF } = window.jspdf;
             const element = document.getElementById('report-content');
+            const btn = event.currentTarget;
+            const originalText = btn.innerHTML;
+            
             try {
-                const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+                btn.innerHTML = '<span class="animate-spin mr-2">⌛</span>處理中...';
+                btn.disabled = true;
+
+                const canvas = await html2canvas(element, { 
+                    scale: 2, 
+                    useCORS: true,
+                    logging: false,
+                    backgroundColor: "#ffffff"
+                });
+                
                 const imgData = canvas.toDataURL('image/png');
                 const pdf = new jsPDF('p', 'mm', 'a4');
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                pdf.save(`${document.getElementById('studentName').textContent}_成長報告.pdf`);
-            } catch (err) { alert("PDF 匯出失敗"); }
+                
+                const imgWidth = 210; // A4 width in mm
+                const pageHeight = 297; // A4 height in mm
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                
+                let heightLeft = imgHeight;
+                let position = 0;
+
+                // 第一頁
+                pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                heightLeft -= pageHeight;
+
+                // 如果還有剩餘內容，新增頁面並位移圖片
+                while (heightLeft >= 0) {
+                    position = heightLeft - imgHeight;
+                    pdf.addPage();
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+                }
+
+                pdf.save(`${document.getElementById('studentName').textContent}_成長報告_${new Date().toLocaleDateString()}.pdf`);
+            } catch (err) { 
+                console.error(err);
+                alert("PDF 匯出失敗，請嘗試使用瀏覽器內建的「列印」功能並選擇「另存為 PDF」。"); 
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
         }
 
         initReport();
