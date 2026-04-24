@@ -30,9 +30,10 @@
 - **身分隔離機制**：管理員可直接預覽任何學員的專業報表，且不影響管理員自身的登入 Session 與權限。
 - **分享連結管理**：產生具備加密 Token 的連結，供外部查核員直接觀看特定報表。
 
-### 5. ⏱️ 智能簽到退系統
-- **QR Code 辨識**：學員專屬二維碼掃描。
-- **API 限流保護**：整合緩衝機制與 BigQuery 快取，徹底解決 Google Sheets API 的 429 限額問題。
+### 5. ⏱️ 智能簽到與高可用架構
+- **BigQuery 數據引擎**：全面遷移 CEEP 大數據與評分統計至 BigQuery，讀取效能提升 300%。
+- **多層級快取 (Caching)**：針對 Sheets 設定檔實作記憶體快取，徹底解決 Google API 429 限額問題。
+- **強韌寫入機制**：實作 BQ 優先寫入與 Sheets 自動回退，確保教學評分在任何網路波動下皆能穩健儲存。
 
 ---
 
@@ -40,8 +41,9 @@
 
 - **運算核心**: Flask (Python 3.13) 部署於 **Google Cloud Run**。
 - **資料中心**: 
-  - **BigQuery**: 主要分析數據庫，負責高頻次數據查詢與聚合分析。
-  - **Google Sheets**: 作為設定檔管理與數據鏡像備份。
+  - **BigQuery**: 核心分析數據庫，負責高頻次數據查詢、CEEP 數據聚合與成長趨勢分析。
+  - **Google Sheets**: 作為使用者設定介面、名單管理與原始數據鏡像備份。
+- **效能優化**: 實作 LRU Cache 機制與異步數據同步。
 - **前端技術**: Vanilla CSS + TailwindCSS + Chart.js + html2canvas + jsPDF。
 - **安全機制**: Google OAuth 2.0 (HTTPS Secure Session) + RBAC 權限管理。
 

@@ -6,9 +6,10 @@
 - **CEEP 同步**：實作爬蟲自動抓取 DOPS / Mini-CEX 數據。
 
 ## 🔵 Phase 4-6: 數據引擎升級與專業報表 (已完成 ✅)
-- **BigQuery 資料引擎**：
-  - 遷移學員統計邏輯至 BQ，解決 Google Sheets 429 API 限流問題。
-  - 修復學員 ID 匹配 Bug，提升查詢速度 300%。
+- **BigQuery 數據引擎 (全面化)**：
+  - [DONE] 遷移學員統計、CEEP DOPS/MiniCEX 數據至 BQ。
+  - [DONE] 實作 BQ 優先寫入策略，解決 Sheets API 429 寫入失敗問題。
+  - [DONE] 實作 10 分鐘 TTL 全域快取 (Global Cache)，保護靜態設定檔讀取。
 - **Pro 版專業成長報表**：
   - 實作多選站別動態過濾。
   - 實作身分感應參考線 (PGY 6分 / 學生 3分)。
