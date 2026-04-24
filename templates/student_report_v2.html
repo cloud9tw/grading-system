@@ -89,19 +89,27 @@
                 </div>
             </div>
 
-            <!-- Level Distribution Pie Chart -->
+            <!-- OPA Trust Level Distributions (Split into 3) -->
             <div class="bg-slate-50 rounded-2xl p-6 border border-slate-200">
                 <div class="flex justify-between items-center mb-6">
                     <h3 class="font-black text-slate-800 flex items-center gap-2">
                         <span class="w-2 h-6 bg-emerald-500 rounded-full"></span>
-                        信賴等級分佈統計
+                        各面向信賴分佈 (OPA 總評)
                     </h3>
-                    <div class="bg-white px-3 py-1 rounded-full border text-xs font-bold text-slate-500">
-                        選中次數: <span id="totalCount" class="text-emerald-600">0</span>
-                    </div>
                 </div>
-                <div class="h-64 flex items-center justify-center">
-                    <canvas id="levelsChart"></canvas>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="flex flex-col items-center">
+                        <div class="h-40 w-40"><canvas id="opa1LevelChart"></canvas></div>
+                        <span class="text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-widest">OPA1 總評分佈</span>
+                    </div>
+                    <div class="flex flex-col items-center border-x border-slate-200">
+                        <div class="h-40 w-40"><canvas id="opa2LevelChart"></canvas></div>
+                        <span class="text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-widest">OPA2 總評分佈</span>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div class="h-40 w-40"><canvas id="opa3LevelChart"></canvas></div>
+                        <span class="text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-widest">OPA3 總評分佈</span>
+                    </div>
                 </div>
             </div>
 
@@ -242,17 +250,60 @@
             
             const totalCount = data.length;
             const avgScore = data.length > 0 ? data.reduce((sum, l) => sum + l.aspect2, 0) / data.length : 0;
-            const levelDist = {};
-            data.forEach(l => { levelDist[l.aspect1] = (levelDist[l.aspect1] || 0) + 1; });
 
-            document.getElementById('totalCount').textContent = totalCount;
             document.getElementById('avgScoreText').textContent = avgScore.toFixed(2);
 
             updateTrendsChart(data);
-            updateLevelsChart(levelDist);
+            
+            // 獨立計算 OPA 1, 2, 3 的分佈
+            const dist1 = calculateLevelDist(data, 'opa1');
+            const dist2 = calculateLevelDist(data, 'opa2');
+            const dist3 = calculateLevelDist(data, 'opa3');
+            
+            updateLevelChart('opa1LevelChart', dist1);
+            updateLevelChart('opa2LevelChart', dist2);
+            updateLevelChart('opa3LevelChart', dist3);
+
             updateGaugeChart(avgScore);
-            updateDistributionChart(levelDist);
+            updateDistributionChart(calculateLevelDist(data, 'opa1')); // 底部統計維持 OPA1 或整體
             updateLogsTable(data);
+        }
+
+        function calculateLevelDist(data, field) {
+            const dist = {};
+            data.forEach(l => {
+                const val = l[field];
+                if (val > 0) {
+                    const label = val.toString();
+                    dist[label] = (dist[label] || 0) + 1;
+                }
+            });
+            return dist;
+        }
+
+        function updateLevelChart(id, dist) {
+            const ctx = document.getElementById(id).getContext('2d');
+            const chartKey = 'chart_' + id;
+            if(charts[chartKey]) charts[chartKey].destroy();
+            
+            charts[chartKey] = new Chart(ctx, {
+                type: 'doughnut',
+                data: { 
+                    labels: Object.keys(dist), 
+                    datasets: [{ 
+                        data: Object.values(dist), 
+                        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                        borderWidth: 0
+                    }] 
+                },
+                options: { 
+                    maintainAspectRatio: false, 
+                    cutout: '70%', 
+                    plugins: { 
+                        legend: { display: false } // 縮小圖表不顯示 legend 節省空間
+                    } 
+                }
+            });
         }
 
         function updateTrendsChart(data) {
