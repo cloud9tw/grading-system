@@ -2054,13 +2054,13 @@ def admin_view_report(student_id):
     try:
         gc = get_gspread_client()
         doc = gc.open_by_key(os.getenv("GOOGLE_SHEET_ID"))
-        sheet = doc.worksheet('學員清單')
+        sheet = doc.worksheet('學員名單')
         records = safe_get_all_records(sheet)
-        target = next((r for r in records if str(r.get('學員ID', '')).split('.')[0] == str(student_id)), None)
+        target = next((r for r in records if str(r.get('學生ID', '')).split('.')[0] == str(student_id)), None)
         
         if target:
             session['student_info'] = {
-                'id': str(target.get('學員ID', '')),
+                'id': str(target.get('學生ID', '')),
                 'name': str(target.get('姓名', ''))
             }
             session['is_shared_view'] = False # 管理員身份預覽
