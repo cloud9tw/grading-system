@@ -1,7 +1,6 @@
 import os
-import vertexai
-from vertexai.generative_models import GenerativeModel
 import logging
+from openai import OpenAI
 from google.cloud import bigquery
 from credentials_utils import get_bq_client, get_gspread_client
 from privacy_utils import get_code, decode_name
@@ -9,10 +8,29 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize Vertex AI
-bq_client_obj, project_id = get_bq_client()
-if project_id:
-    vertexai.init(project=project_id, location="asia-east1")
+# ==========================================
+# 🧠 AI 固定指令設定 (Fixed Prompt)
+# 您可以在這裡修改分析的風格、重點或格式
+# ==========================================
+SYSTEM_PROMPT = """你是一位專業的臨床醫學教育專家。
+你的任務是分析學員的臨床評分數據（EPA/DOPS/Mini-CEX）與教師的質性評語，
+並生成一份結構化的「個人化學習計畫 (Individual Learning Plan, ILP)」。
+
+要求：
+1. 使用繁體中文。
+2. 語氣專業、嚴謹且具有教育指導意義。
+3. 嚴禁出現任何學員或教師的真實姓名，僅使用代號。
+4. 結構必須包含：
+   - ## 🎯 核心能力摘要
+   - ## 🔍 表現優勢分析
+   - ## ⚠️ 臨床操作盲點與改進空間
+   - ## 🚀 具體行動建議 (依站別列出)
+   - ## 📈 學習進度預期
+"""
+# ==========================================
+
+# 初始化 OpenAI Client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def fetch_student_performance_data(student_name):
     """
@@ -21,7 +39,7 @@ def fetch_student_performance_data(student_name):
     manager_bq, project = get_bq_client()
     student_code = get_code(student_name, 'student')
     
-    # 1. 從 BigQuery 抓取 EPA 評分 (使用代碼)
+    # 1. 從 BigQuery 抓取 EPA 評分
     query = f"""
         SELECT station, opa1_sum, opa2_sum, opa3_sum, comment, aspect1, aspect2, timestamp
         FROM `{project}.grading_data.grading_logs`
@@ -36,7 +54,7 @@ def fetch_student_performance_data(student_name):
     except Exception as e:
         logging.error(f"BQ Fetch Error: {e}")
 
-    # 2. 從 CEEP Sheets 抓取質性評語 (使用真實姓名，然後去識別)
+    # 2. 從 CEEP Sheets 抓取質性評語
     ceep_comments = []
     try:
         gc = get_gspread_client()
@@ -48,16 +66,16 @@ def fetch_student_performance_data(student_name):
                 ws = doc.worksheet(sname)
                 all_vals = ws.get_all_values()
                 if len(all_vals) > 1:
-                    headers = all_vals[0]
                     for row in all_vals[1:]:
-                        if len(row) > 0 and row[0].strip() == student_name:
-                            # 找出評語欄位 (假設在後方，且包含關鍵字)
-                            for i, cell in enumerate(row):
-                                if len(cell) > 15: # 較長的文字通常是評語
-                                    ceep_comments.append({
-                                        "source": sname,
-                                        "content": cell.strip()
-                                    })
+                        if len(row) > 2 and row[2].strip() == student_name: # 假設姓名在第三欄
+                            comment_content = ""
+                            # 尋找內容較長的欄位作為評語
+                            for cell in row:
+                                if len(str(cell)) > 15:
+                                    comment_content = str(cell).strip()
+                                    break
+                            if comment_content:
+                                ceep_comments.append({"source": sname, "content": comment_content})
             except: continue
     except Exception as e:
         logging.error(f"CEEP Sheets Fetch Error: {e}")
@@ -68,38 +86,37 @@ def fetch_student_performance_data(student_name):
         "ceep_comments": ceep_comments
     }
 
-def generate_ilp_vertex(student_name):
+def generate_ilp_chatgpt(student_name):
     """
-    調用 Vertex AI (Gemini) 生成 ILP。
+    調用 OpenAI ChatGPT 生成 ILP。
     """
     data = fetch_student_performance_data(student_name)
     
-    # 建構 Prompt (去識別化)
-    prompt = f"你是一位醫學教育專家。請根據以下匿名學員（代號：{data['student_code']}）的評分數據與教師回饋，生成一份專業的個人化學習計畫 (ILP)。\n\n"
-    
-    prompt += "### 1. EPA 評分紀錄 (分項分數與評語):\n"
+    # 建構使用者資料 Prompt
+    user_content = f"學員代號：{data['student_code']}\n\n"
+    user_content += "### 數據紀錄：\n"
     for r in data['epa_records']:
-        prompt += f"- 站別: {r['station']} | 分數: {r['opa1_sum']}/{r['opa2_sum']}/{r['opa3_sum']} | 評語: {r['comment']} | 優缺點: {r['aspect1']}, {r['aspect2']}\n"
+        user_content += f"- [{r['station']}] 分數: {r['opa1_sum']}/{r['opa2_sum']}/{r['opa3_sum']} | 評語: {r['comment']} | 亮點: {r['aspect1']}, 改善點: {r['aspect2']}\n"
     
-    prompt += "\n### 2. 其他臨床回饋 (質性描述):\n"
+    user_content += "\n### 額外評語：\n"
     for c in data['ceep_comments']:
-        prompt += f"- [{c['source']}]: {c['content']}\n"
-
-    prompt += "\n---要求---\n"
-    prompt += "1. 使用繁體中文撰寫。\n"
-    prompt += "2. 包含以下結構：## 🎯 優勢摘要、## ⚠️ 待加強領域、## 📅 下一階段學習目標、## 📝 給學員的具體行動建議。\n"
-    prompt += "3. 內容需具備不可辨識性，嚴禁出現任何真實姓名。\n"
-    prompt += "4. 語氣需專業且具鼓勵性。\n"
+        user_content += f"- {c['source']}: {c['content']}\n"
 
     try:
-        model = GenerativeModel("gemini-2.0-flash-001")
-        response = model.generate_content(prompt)
-        return response.text
+        response = client.chat.completions.create(
+            model="gpt-4o", # 建議使用 gpt-4o 或 gpt-4o-mini
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_content}
+            ],
+            temperature=0.7
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        logging.error(f"Vertex AI Error: {e}")
-        return f"AI 分析失敗：{str(e)}"
+        logging.error(f"OpenAI Error: {e}")
+        return f"ChatGPT 分析失敗：{str(e)}"
 
 if __name__ == "__main__":
-    # 測試
-    res = generate_ilp_vertex("測試學生")
+    # 測試 (需先在環境變數設定 OPENAI_API_KEY)
+    res = generate_ilp_chatgpt("測試學生")
     print(res)

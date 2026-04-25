@@ -13,7 +13,7 @@ import threading
 from ceep_scraper import scrape_ceep_all_forms
 from ceep_archiver import archive_to_sheets
 from sync_to_bq import sync_all as sync_to_bq_all
-from ai_handler import generate_ilp_vertex
+from ai_handler import generate_ilp_chatgpt
 from privacy_utils import get_code, decode_name
 import pandas as pd
 import io
@@ -2663,8 +2663,8 @@ def admin_ai_analysis():
         if not student_name:
             return jsonify({"error": "未提供學員姓名"}), 400
         
-        # 執行 AI 分析
-        report = generate_ilp_vertex(student_name)
+        # 調用 AI 分析
+        report = generate_ilp_chatgpt(student_name)
         return jsonify({"report": report})
     
     # GET 請求：顯示頁面與學員清單
