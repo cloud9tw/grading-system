@@ -130,7 +130,7 @@
 
     <script>
 
-        // 初始化 QR Code 與點擊放大事件
+        // 初始化 QR Code
         document.querySelectorAll('.qr-container').forEach(container => {
             const url = container.getAttribute('data-url');
             new QRCode(container, {
@@ -141,11 +141,15 @@
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
-            
-            // 點擊 QR Code 區域即放大
-            container.classList.add('cursor-zoom-in');
-            container.addEventListener('click', function(e) {
-                e.stopPropagation();
+        });
+
+        // 監聽全卡片單擊事件以放大 (排除按鈕)
+        document.querySelectorAll('.course-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                // 如果點擊的是按鈕或按鈕內的元素，則不處理放大
+                if (e.target.closest('button')) return;
+                
+                const url = this.getAttribute('data-url');
                 openZoomModal(url);
             });
         });
@@ -153,29 +157,27 @@
         // 放大彈窗邏輯
         const zoomModal = document.getElementById('zoomModal');
         const zoomQrContainer = document.getElementById('zoomQrContainer');
-        let zoomQRCode = null;
 
         function openZoomModal(url) {
-            zoomModal.classList.remove('hidden');
-            zoomModal.classList.add('flex');
+            // 先顯示背景遮罩
+            zoomModal.style.display = 'flex';
             
-            // 清除舊的
-            zoomQrContainer.innerHTML = '';
-            
-            // 產生大的 QR Code
-            new QRCode(zoomQrContainer, {
-                text: url,
-                width: 500,
-                height: 500,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.H
-            });
+            // 使用 setTimeout 確保瀏覽器先完成上一行的渲染
+            setTimeout(() => {
+                zoomQrContainer.innerHTML = '';
+                new QRCode(zoomQrContainer, {
+                    text: url,
+                    width: 500,
+                    height: 500,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+            }, 50);
         }
 
         function closeZoomModal() {
-            zoomModal.classList.add('hidden');
-            zoomModal.classList.remove('flex');
+            zoomModal.style.display = 'none';
         }
 
         let currentCourse = null;
