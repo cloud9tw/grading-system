@@ -13,6 +13,8 @@ import threading
 from ceep_scraper import scrape_ceep_all_forms
 from ceep_archiver import archive_to_sheets
 from sync_to_bq import sync_all as sync_to_bq_all
+from ai_handler import generate_ilp_vertex
+from privacy_utils import get_code, decode_name
 import pandas as pd
 import io
 from flask import send_file
@@ -2600,6 +2602,47 @@ def api_admin_adjust_attendance():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/admin/sync_bq')
+def api_admin_sync_bq():
+    """手動觸發 BigQuery 匿名同步"""
+    if not session.get('is_admin'):
+        return jsonify({'success': False, 'error': 'Forbidden'}), 403
+    
+    try:
+        from sync_to_bq import sync_all
+        success = sync_all()
+        if success:
+            return jsonify({'success': True, 'msg': 'BigQuery 匿名同步完成！'})
+        else:
+            return jsonify({'success': False, 'error': '同步過程中發生錯誤，請檢查日誌。'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/ai_analysis', methods=['GET', 'POST'])
+def admin_ai_analysis():
+    if not session.get('user'): return redirect(url_for('login'))
+    if 'admin' not in session.get('roles', []): return "權限不足", 403
+    
+    if request.method == 'POST':
+        student_name = request.form.get('student_name')
+        if not student_name:
+            return jsonify({"error": "未提供學員姓名"}), 400
+        
+        # 執行 AI 分析
+        report = generate_ilp_vertex(student_name)
+        return jsonify({"report": report})
+    
+    # GET 請求：顯示頁面與學員清單
+    def fetch_students():
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
+        ws = doc.worksheet('學生名單')
+        return safe_get_all_records(ws)
+
+    students = get_cached_data('students', fetch_students)
+    return render_template('ai_ilp.html', students=students)
 
 if __name__ == '__main__':
     # run locally on port 5000

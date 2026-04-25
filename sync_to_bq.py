@@ -7,6 +7,7 @@ import datetime
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from dotenv import load_dotenv
+from privacy_utils import get_code
 
 def parse_dt(ts_str):
     if not ts_str: return None
@@ -26,7 +27,7 @@ def parse_dt(ts_str):
 def sync_all(callback=None):
     """
     Synchronizes Grading Logs and Attendance from Sheets to BigQuery.
-    Can be called from other modules or run manually.
+    Anonymizes names and IDs before upload.
     """
     def log(msg):
         print(msg)
@@ -38,7 +39,7 @@ def sync_all(callback=None):
             else:
                 callback(msg)
 
-    log("Starting Sync Process: [Sheets -> BigQuery]")
+    log("Starting Anonymized Sync Process: [Sheets -> BigQuery]")
     load_dotenv()
     
     # Auth setup
@@ -61,7 +62,7 @@ def sync_all(callback=None):
         project = bq_creds.project_id
 
         # --- 1. SYNC ATTENDANCE ---
-        log("[1/2] Syncing Attendance Records...")
+        log("[1/2] Anonymizing & Syncing Attendance Records...")
         try:
             ws = doc.worksheet('上下班打卡記錄')
             vals = ws.get_all_values()
@@ -70,9 +71,17 @@ def sync_all(callback=None):
                 json_rows = []
                 for r in rows:
                     if not r or not r[0]: continue
+                    
+                    # 去識別化處理
+                    s_name = r[0].strip()
+                    t_name = r[1].strip() if len(r) > 1 else ''
+                    
+                    anon_s_code = get_code(s_name, 'student')
+                    anon_t_code = get_code(t_name, 'teacher') if t_name else ''
+
                     base = {
-                        "student_name": r[0].strip(),
-                        "teacher_name": r[1].strip() if len(r) > 1 else '',
+                        "student_name": anon_s_code,
+                        "teacher_name": anon_t_code,
                         "co_teacher": r[2].strip() if len(r) > 2 else '',
                         "sub_room": r[3].strip() if len(r) > 3 else '',
                         "is_deleted": False
@@ -88,14 +97,14 @@ def sync_all(callback=None):
                     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE", source_format="NEWLINE_DELIMITED_JSON")
                     table_id = f"{project}.grading_data.attendance_events"
                     client.load_table_from_json(json_rows, table_id, job_config=job_config).result()
-                    log(f"Success: Attendance Sync ({len(json_rows)} events)")
+                    log(f"Success: Attendance Sync ({len(json_rows)} events, ANONYMIZED)")
             else:
                 log("Attendance Sync: No data found.")
         except Exception as e:
             log(f"Attendance Sync Failed: {str(e)}")
 
         # --- 2. SYNC GRADING LOGS ---
-        log("[2/2] Syncing EPA Grading Logs...")
+        log("[2/2] Anonymizing & Syncing EPA Grading Logs...")
         try:
             ws = doc.worksheet('評分記錄')
             vals = ws.get_all_values()
@@ -112,16 +121,20 @@ def sync_all(callback=None):
                         items = r[start_idx : start_idx+8]
                         return ",".join([str(x) for x in items if x])
 
-                    raw_sid = str(r[0]).strip()
-                    s_id = raw_sid.split('.')[0] if '.' in raw_sid else raw_sid
+                    # 去識別化處理
+                    raw_sname = r[1].strip()
+                    raw_tname = r[5].strip() if len(r) > 5 else ''
+                    
+                    anon_s_code = get_code(raw_sname, 'student')
+                    anon_t_code = get_code(raw_tname, 'teacher') if raw_tname else ''
 
                     json_rows.append({
-                        "student_id": s_id,
-                        "student_name": r[1].strip(),
+                        "student_id": anon_s_code,
+                        "student_name": anon_s_code,
                         "station": r[2].strip(),
                         "body_part": r[3].strip(),
                         "timestamp": ts,
-                        "teacher_name": r[5].strip() if len(r) > 5 else '',
+                        "teacher_name": anon_t_code,
                         "opa1_sum": r[6].strip() if len(r) > 6 else '',
                         "opa2_sum": r[7].strip() if len(r) > 7 else '',
                         "opa3_sum": r[8].strip() if len(r) > 8 else '',
@@ -138,7 +151,7 @@ def sync_all(callback=None):
                     job_config = bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE", source_format="NEWLINE_DELIMITED_JSON")
                     table_id = f"{project}.grading_data.grading_logs"
                     client.load_table_from_json(json_rows, table_id, job_config=job_config).result()
-                    log(f"Success: EPA Logs Sync ({len(json_rows)} entries)")
+                    log(f"Success: EPA Logs Sync ({len(json_rows)} entries, ANONYMIZED)")
             else:
                 log("EPA Logs Sync: No data found.")
         except Exception as e:

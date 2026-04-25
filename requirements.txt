@@ -14,3 +14,4 @@ playwright
 pandas
 openpyxl
 db-dtypes
+google-cloud-aiplatform
