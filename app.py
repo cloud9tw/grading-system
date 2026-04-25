@@ -2408,7 +2408,9 @@ def admin_course_qrcodes():
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         ws = doc.worksheet('早8課程簽到(含放腫、全人教學)')
-        courses = safe_get_all_records(ws)
+        all_courses = safe_get_all_records(ws)
+        # 過濾掉沒有課程名稱的空行，防止後續報錯
+        courses = [c for c in all_courses if c.get('課程名稱')]
         return render_template('course_qrcodes.html', courses=courses, roles=session.get('roles', []))
     except Exception as e:
         return f"Error loading courses: {e}", 500

@@ -1,82 +1,98 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
-
 <head>
-    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>早 8 課程 QR Code 管理</title>
+    <title>早 8 課程簽到條碼產生器</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-        body {
-            font-family: 'Inter', sans-serif;
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', 'Noto Sans TC', sans-serif; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            .print-break { page-break-after: always; }
         }
 
-        @media print {
-            .no-print {
-                display: none !important;
-            }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
 
-            .print-break {
-                page-break-inside: avoid;
-            }
+        .modal-overlay.active {
+            display: flex !important;
+        }
+
+        .qr-zoom-box {
+            padding: 2rem;
+            background: white;
+            border-radius: 3rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .course-card {
+            transition: all 0.2s ease;
+        }
+        .course-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
     </style>
 </head>
+<body class="bg-gray-50 min-h-screen pb-20">
 
-<body class="bg-gray-50 min-h-screen pb-12">
-
-    <!-- 頂部導覽 -->
-    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50 no-print">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center">
-                    <a href="/" class="flex items-center text-gray-900 hover:text-gray-600 transition">
-                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
-                        </svg>
-                        <span class="font-bold text-xl">課程簽到管理</span>
-                    </a>
-                </div>
+    <nav class="bg-white border-b border-gray-200 px-6 py-4 mb-8 no-print sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-xl shadow-lg">8</div>
+                <h2 class="text-xl font-black text-gray-900 tracking-tight">早 8 課程管理系統</h2>
+            </div>
+            <div class="flex gap-4">
+                <button onclick="window.print()" class="px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-bold hover:bg-gray-800 transition">列印所有條碼</button>
+                <button onclick="window.history.back()" class="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-bold hover:bg-gray-50 transition">返回</button>
             </div>
         </div>
     </nav>
 
-    <main class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        <div class="mb-8 no-print">
-            <h1 class="text-3xl font-extrabold text-gray-900">早 8 課程簽到列表</h1>
-            <p class="mt-2 text-gray-600">系統會自動根據「早 8 課程簽到」試算表的內容產生 QR Code。您可以直接在螢幕上供學員掃描，或列印成紙本。</p>
+    <main class="max-w-7xl mx-auto px-6">
+        <div class="mb-10 no-print">
+            <h1 class="text-4xl font-black text-gray-900 mb-2">課程簽到 QR Code</h1>
+            <p class="text-gray-500">點擊卡片即可放大 QR Code 供遠處掃描。點擊「手動補登」可幫忘記帶手機的同學簽到。</p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {% for course in courses %}
-            <div onclick="openZoomModal('{{ request.host_url }}course_checkin?course={{ course.課程名稱 | urlencode }}')"
-                class="course-card bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print-break flex flex-col items-center p-6 select-none hover:shadow-md transition-shadow cursor-zoom-in">
-                <div class="w-full mb-4">
-                    <span
-                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 mb-1">
-                        {{ course.授課教師 }} 老師
-                    </span>
-                    <h3 class="text-lg font-bold text-gray-900 leading-tight">{{ course.課程名稱 }}</h3>
-                    <div class="mt-2 flex items-center gap-4 text-sm text-gray-500">
-                        <span class="flex items-center gap-1 text-xs">📅 {{ course.上課日期 }}</span>
-                        <span class="flex items-center gap-1 text-xs">⏰ {{ course.開始時間 }}</span>
+            <div onclick="triggerZoom('{{ request.host_url }}course_checkin?course={{ course.課程名稱 | urlencode }}')"
+                class="course-card bg-white rounded-3xl border border-gray-200 p-8 flex flex-col items-center cursor-zoom-in relative">
+                
+                <div class="w-full mb-6">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest rounded-full">
+                            {{ course.授課教師 }}
+                        </span>
+                        <span class="text-[10px] font-bold text-gray-400 font-mono">{{ course.日期 }}</span>
                     </div>
+                    <h3 class="text-2xl font-black text-gray-900 leading-tight mb-1">{{ course.課程名稱 }}</h3>
+                    <p class="text-xs text-gray-400 font-bold uppercase tracking-tight">
+                        {{ course.上課日期 }} • {{ course.開始時間 }}
+                    </p>
                 </div>
 
                 <!-- QR Code 容器 -->
-                <div class="qr-container bg-white p-2 border-2 border-gray-100 rounded-xl mb-4"
-                    data-url="{{ request.host_url }}course_checkin?course={{ course.課程名稱 | urlencode }}">
+                <div class="qr-box p-3 bg-white border-4 border-gray-50 rounded-2xl mb-6 shadow-sm" 
+                     data-url="{{ request.host_url }}course_checkin?course={{ course.課程名稱 | urlencode }}">
                 </div>
 
-                <div class="w-full flex justify-between items-center no-print mt-auto pt-4 border-t border-gray-50">
-                    <span class="text-indigo-600 font-bold text-sm">{{ course.時數 }} 小時</span>
-                    <button onclick="event.stopPropagation(); openManualCheckin('{{ course.課程名稱 }}', '{{ course.時數 }}')"
-                        class="text-xs bg-gray-100 text-gray-600 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition font-semibold">
+                <div class="w-full flex justify-between items-center mt-auto pt-6 border-t border-gray-100 no-print">
+                    <span class="text-blue-600 font-black text-sm">{{ course.時數 }} 小時</span>
+                    <button onclick="event.stopPropagation(); triggerManual('{{ course.課程名稱 }}', '{{ course.時數 }}')"
+                        class="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-[11px] font-black hover:bg-gray-200 transition uppercase tracking-wider">
                         手動補登
                     </button>
                 </div>
@@ -85,136 +101,101 @@
         </div>
     </main>
 
-    <!-- 手動補登 Modal -->
-    <div id="manualModal" style="display: none;" class="fixed inset-0 bg-black/50 items-center justify-center z-[100] no-print px-4">
-        <div class="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <div class="flex justify-between items-start mb-6">
-                <div>
-                    <h2 class="text-xl font-bold text-gray-900">手動補登時數</h2>
-                    <p id="targetCourseName" class="text-sm text-blue-600 font-semibold"></p>
-                </div>
-                <button onclick="closeManualCheckin()" class="text-gray-400 hover:text-gray-600">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
-                        </path>
-                    </svg>
-                </button>
-            </div>
+    <!-- 放大彈窗 (放在 Body 最末端) -->
+    <div id="zoomOverlay" class="modal-overlay no-print" onclick="closeZoom()">
+        <div class="flex flex-col items-center" onclick="event.stopPropagation()">
+            <div id="zoomContainer" class="qr-zoom-box"></div>
+            <p class="mt-8 text-white text-xl font-black opacity-50 tracking-widest">點擊任意處關閉</p>
+        </div>
+    </div>
 
-            <div class="space-y-4">
+    <!-- 手動補登彈窗 -->
+    <div id="manualOverlay" class="modal-overlay no-print" onclick="closeManual()">
+        <div class="bg-white rounded-[2.5rem] p-10 w-full max-w-md shadow-2xl" onclick="event.stopPropagation()">
+            <h2 class="text-3xl font-black text-gray-900 mb-2">手動補登</h2>
+            <p id="manualCourseName" class="text-blue-600 font-bold text-sm mb-8"></p>
+            
+            <div class="space-y-6">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">學員代號 (ID)</label>
-                    <input type="text" id="manualSid" placeholder="例如: 8"
-                        class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">學員學號</label>
+                    <input type="text" id="m_sid" class="w-full bg-gray-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-700">
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">學員姓名</label>
-                    <input type="text" id="manualName" placeholder="學員姓名"
-                        class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">學員姓名</label>
+                    <input type="text" id="m_name" class="w-full bg-gray-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-700">
                 </div>
-                <button onclick="event.stopPropagation(); submitManual()" id="submitBtn"
-                    class="w-full bg-indigo-600 py-3 rounded-lg text-white font-bold hover:bg-indigo-700 transition shadow-md">
+                <button onclick="doManualCheckin()" id="m_btn" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 transition transform active:scale-95">
                     確認補登
                 </button>
             </div>
         </div>
-    <!-- 放大置中 Modal -->
-    <div id="zoomModal" onclick="closeZoomModal()" style="display: none;"
-        class="fixed inset-0 bg-slate-900/90 items-center justify-center z-[200] no-print cursor-pointer">
-        <div class="flex flex-col items-center" onclick="event.stopPropagation()">
-            <div id="zoomQrContainer" class="p-8 bg-white border-8 border-white rounded-[3rem] shadow-2xl"></div>
-            <p class="mt-8 text-2xl font-bold text-white/50">點擊任意處關閉</p>
-        </div>
     </div>
 
     <script>
-
-        // 初始化 QR Code
-        document.querySelectorAll('.qr-container').forEach(container => {
-            const url = container.getAttribute('data-url');
-            new QRCode(container, {
-                text: url,
-                width: 200,
-                height: 200,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
+        // 初始化小 QR Code
+        document.querySelectorAll('.qr-box').forEach(box => {
+            new QRCode(box, {
+                text: box.dataset.url,
+                width: 180, height: 180,
+                colorDark: "#0f172a", colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
         });
 
-
-        function openZoomModal(url) {
-            const zoomModal = document.getElementById('zoomModal');
-            const zoomQrContainer = document.getElementById('zoomQrContainer');
-            zoomModal.style.display = 'flex';
-            zoomQrContainer.innerHTML = '';
-            new QRCode(zoomQrContainer, {
+        // 放大邏輯 (全域函數確保 onclick 能抓到)
+        window.triggerZoom = function(url) {
+            const overlay = document.getElementById('zoomOverlay');
+            const container = document.getElementById('zoomContainer');
+            
+            // 即刻顯示 Overlay
+            overlay.classList.add('active');
+            
+            // 非同步產生大的 QR
+            container.innerHTML = '';
+            new QRCode(container, {
                 text: url,
-                width: 500,
-                height: 500,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
+                width: 500, height: 500,
+                colorDark: "#000000", colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
-        }
+        };
 
-        function closeZoomModal() {
-            document.getElementById('zoomModal').style.display = 'none';
-        }
+        window.closeZoom = function() {
+            document.getElementById('zoomOverlay').classList.remove('active');
+        };
 
-        let currentCourse = null;
-        let currentHours = 0;
+        // 手動補登邏輯
+        let _curCourse = "", _curHours = 0;
+        window.triggerManual = function(name, hours) {
+            _curCourse = name;
+            _curHours = hours;
+            document.getElementById('manualCourseName').innerText = name;
+            document.getElementById('manualOverlay').classList.add('active');
+        };
 
-        function openManualCheckin(name, hours) {
-            currentCourse = name;
-            currentHours = hours;
-            document.getElementById('targetCourseName').innerText = name;
-            document.getElementById('manualModal').style.display = 'flex';
-        }
+        window.closeManual = function() {
+            document.getElementById('manualOverlay').classList.remove('active');
+        };
 
-        function closeManualCheckin() {
-            document.getElementById('manualModal').style.display = 'none';
-        }
+        async function doManualCheckin() {
+            const sid = document.getElementById('m_sid').value.trim();
+            const name = document.getElementById('m_name').value.trim();
+            const btn = document.getElementById('m_btn');
+            if(!sid || !name) return alert("請完整填寫學號與姓名");
 
-        async function submitManual() {
-            const sid = document.getElementById('manualSid').value.trim();
-            const name = document.getElementById('manualName').value.trim();
-            const btn = document.getElementById('submitBtn');
-
-            if (!sid || !name) {
-                alert('請填寫學員 ID 與姓名');
-                return;
-            }
-
-            btn.disabled = true;
-            btn.innerText = '處理中...';
-
+            btn.disabled = true; btn.innerText = "處理中...";
             try {
-                const res = await fetch('/api/admin/manual_checkin', {
+                const r = await fetch('/api/admin/manual_checkin', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        student_id: sid,
-                        student_name: name,
-                        course_name: currentCourse,
-                        hours: currentHours
-                    })
+                    body: JSON.stringify({ student_id: sid, student_name: name, course_name: _curCourse, hours: _curHours })
                 });
-                const result = await res.json();
-                if (result.success) {
-                    alert('手動補登成功！');
-                    closeManualCheckin();
-                } else {
-                    alert('失敗: ' + (result.error || '不明原因'));
-                }
-            } catch (e) {
-                alert('連線失敗: ' + e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = '確認補登';
-            }
+                const res = await r.json();
+                if(res.success) { alert("補登成功！"); closeManual(); }
+                else { alert("失敗: " + (res.error || "未知錯誤")); }
+            } catch(e) { alert("連線失敗: " + e.message); }
+            finally { btn.disabled = false; btn.innerText = "確認補登"; }
         }
     </script>
 </body>
-
 </html>
