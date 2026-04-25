@@ -118,9 +118,17 @@
                 </button>
             </div>
         </div>
+    <!-- 放大置中 Modal -->
+    <div id="zoomModal" onclick="closeZoomModal()"
+        class="fixed inset-0 bg-white hidden items-center justify-center z-[200] no-print cursor-pointer">
+        <div class="flex flex-col items-center">
+            <div id="zoomQrContainer" class="p-8 bg-white border-8 border-gray-100 rounded-[3rem] shadow-2xl"></div>
+            <p class="mt-8 text-2xl font-bold text-gray-400">點擊任意處關閉</p>
+        </div>
     </div>
 
     <script>
+
         // 初始化 QR Code
         document.querySelectorAll('.qr-container').forEach(container => {
             const url = container.getAttribute('data-url');
@@ -132,7 +140,40 @@
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
+
+            // 監聽連點事件以放大
+            container.addEventListener('dblclick', function() {
+                openZoomModal(url);
+            });
         });
+
+        // 放大彈窗邏輯
+        const zoomModal = document.getElementById('zoomModal');
+        const zoomQrContainer = document.getElementById('zoomQrContainer');
+        let zoomQRCode = null;
+
+        function openZoomModal(url) {
+            zoomModal.classList.remove('hidden');
+            zoomModal.classList.add('flex');
+            
+            // 清除舊的
+            zoomQrContainer.innerHTML = '';
+            
+            // 產生大的 QR Code
+            new QRCode(zoomQrContainer, {
+                text: url,
+                width: 500,
+                height: 500,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.H
+            });
+        }
+
+        function closeZoomModal() {
+            zoomModal.classList.add('hidden');
+            zoomModal.classList.remove('flex');
+        }
 
         let currentCourse = null;
         let currentHours = 0;
