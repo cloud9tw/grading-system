@@ -56,7 +56,10 @@ google = oauth.register(
 GLOBAL_CACHE = {
     'students': {'data': None, 'time': None},
     'teachers': {'data': None, 'time': None},
-    'stations': {'data': None, 'time': None}
+    'stations': {'data': None, 'time': None},
+    'epa_requirements': {'data': None, 'time': None},
+    'exam_rooms': {'data': None, 'time': None},
+    'scoring_config': {'data': None, 'time': None}
 }
 CACHE_TTL = 600 # 10 分鐘
 
@@ -1910,12 +1913,25 @@ def get_student_gamification():
         return jsonify({'success': False, 'error': 'No student info found.'}), 400
         
     try:
-        from gamification import get_student_gamification_data
+        from gamification import get_student_gamification_data, parse_scoring_config
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         
-        data = get_student_gamification_data(gc, doc, student_info)
+        # 準備快取數據
+        def f_students(): return doc.worksheet('學員名單').get_all_values()
+        def f_epa(): return doc.worksheet('各類別EPA需求').get_all_values()
+        def f_rooms(): return doc.worksheet('檢查室清單').get_all_values()
+        def f_score(): return parse_scoring_config(doc)
+        
+        cached = {
+            'students': get_cached_data('students', f_students),
+            'epa_requirements': get_cached_data('epa_requirements', f_epa),
+            'exam_rooms': get_cached_data('exam_rooms', f_rooms),
+            'scoring_config': get_cached_data('scoring_config', f_score)
+        }
+        
+        data = get_student_gamification_data(gc, doc, student_info, cached_data=cached)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         import traceback
@@ -1929,12 +1945,25 @@ def get_leaderboard():
         return jsonify({'success': False, 'error': 'Unauthorized'}), 401
         
     try:
-        from gamification import get_leaderboard_data
+        from gamification import get_leaderboard_data, parse_scoring_config
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
         
-        data = get_leaderboard_data(gc, doc)
+        # 準備快取數據
+        def f_students(): return doc.worksheet('學員名單').get_all_values()
+        def f_epa(): return doc.worksheet('各類別EPA需求').get_all_values()
+        def f_rooms(): return doc.worksheet('檢查室清單').get_all_values()
+        def f_score(): return parse_scoring_config(doc)
+        
+        cached = {
+            'students': get_cached_data('students', f_students),
+            'epa_requirements': get_cached_data('epa_requirements', f_epa),
+            'exam_rooms': get_cached_data('exam_rooms', f_rooms),
+            'scoring_config': get_cached_data('scoring_config', f_score)
+        }
+        
+        data = get_leaderboard_data(gc, doc, cached_data=cached)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
         import traceback

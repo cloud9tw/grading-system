@@ -258,16 +258,12 @@ def get_bq_gamification_logs():
     Returns: (grading_counts, feedback_counts)
     """
     try:
+        from credentials_utils import get_bq_client
         from privacy_utils import decode_name
-        try:
-            credentials = service_account.Credentials.from_service_account_file('credentials.json')
-            client = bigquery.Client(credentials=credentials, project=credentials.project_id)
-            project = credentials.project_id
-        except FileNotFoundError:
-            import google.auth
-            credentials, project = google.auth.default()
-            project = project or "epa-grading-system"
-            client = bigquery.Client(credentials=credentials, project=project)
+        
+        client, project = get_bq_client()
+        if not client:
+            return {}, {}
         
         # 1. Aggregated Grading Logs: Count per (student_id, student_name, station, body_part)
         q_gps = f"""
@@ -318,15 +314,22 @@ def get_bq_gamification_logs():
         traceback.print_exc()
         return {}, {}
 
-def get_student_gamification_data(gc, doc, student_info):
-    eps = doc.worksheet('各類別EPA需求').get_all_values()
-    rps = doc.worksheet('檢查室清單').get_all_values()
+def get_student_gamification_data(gc, doc, student_info, cached_data=None):
+    if cached_data:
+        eps = cached_data.get('epa_requirements')
+        rps = cached_data.get('exam_rooms')
+        st_vals = cached_data.get('students')
+        scoring_config = cached_data.get('scoring_config')
+    else:
+        eps = doc.worksheet('各類別EPA需求').get_all_values()
+        rps = doc.worksheet('檢查室清單').get_all_values()
+        st_vals = doc.worksheet('學員名單').get_all_values()
+        scoring_config = parse_scoring_config(doc)
+        
     grading_counts, feedback_counts = get_bq_gamification_logs()
     exps = parse_exemptions(doc)
-    scoring_config = parse_scoring_config(doc)
     
     s_email = ""
-    st_vals = doc.worksheet('學員名單').get_all_values()
     for r in st_vals[1:]:
         if len(r) > 2 and str(r[0]).strip() == str(student_info.get('id', '')).strip():
             s_email = str(r[2]).strip()
@@ -340,12 +343,20 @@ def get_student_gamification_data(gc, doc, student_info):
         eps, [], rps, [], [], exps, get_first_monday(), datetime.date.today(), scoring_config, indexed_data
     )
 
-def get_leaderboard_data(gc, doc):
+def get_leaderboard_data(gc, doc, cached_data=None):
     try:
-        eps = doc.worksheet('各類別EPA需求').get_all_values()
-        rps = doc.worksheet('檢查室清單').get_all_values()
+        if cached_data:
+            eps = cached_data.get('epa_requirements')
+            rps = cached_data.get('exam_rooms')
+            st_vals = cached_data.get('students')
+            scoring_config = cached_data.get('scoring_config')
+        else:
+            eps = doc.worksheet('各類別EPA需求').get_all_values()
+            rps = doc.worksheet('檢查室清單').get_all_values()
+            st_vals = doc.worksheet('學員名單').get_all_values()
+            scoring_config = parse_scoring_config(doc)
+            
         exps = parse_exemptions(doc)
-        scoring_config = parse_scoring_config(doc)
         fm = get_first_monday()
         today = datetime.date.today()
         
