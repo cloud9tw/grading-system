@@ -2255,7 +2255,14 @@ def admin_portal():
         
         def fetch_students_admin():
             try:
-                ws = doc.worksheet('學員名單')
+                # 嘗試多種可能的分頁名稱
+                ws = None
+                for name in ['學生名單', '學員名單', '學員名冊']:
+                    try:
+                        ws = doc.worksheet(name)
+                        break
+                    except: continue
+                if not ws: return []
                 return safe_get_all_records(ws)
             except: return []
             
@@ -2701,7 +2708,14 @@ def admin_ai_analysis():
         gc = get_gspread_client()
         sheet_id = os.getenv("GOOGLE_SHEET_ID")
         doc = gc.open_by_key(sheet_id)
-        ws = doc.worksheet('學生名單')
+        # 嘗試多種可能的分頁名稱
+        ws = None
+        for name in ['學生名單', '學員名單', '學員名冊']:
+            try:
+                ws = doc.worksheet(name)
+                break
+            except: continue
+        if not ws: return []
         return safe_get_all_records(ws)
 
     students = get_cached_data('students', fetch_students)
