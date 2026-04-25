@@ -2531,30 +2531,48 @@ def api_course_checkin():
 @app.route('/api/admin/manual_checkin', methods=['POST'])
 def api_admin_manual_checkin():
     user = session.get('user')
-    if not user or 'teacher' not in session.get('roles', []):
+    # 統一使用管理員權限檢查
+    if not user or not session.get('is_admin'):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     
-    data = request.json
-    target_sid = str(data.get('student_id', '')).split('.')[0].strip()
-    target_name = data.get('student_name', '')
-    course_name = data.get('course_name', '')
-    hours = float(data.get('hours', 0))
-    
-    bq_client, project_id = get_bq_client()
-    now_iso = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).isoformat()
-    
-    row_c = [{
-        'student_id': target_sid,
-        'student_name': target_name,
-        'course_name': course_name,
-        'hours': hours,
-        'is_manual': True,
-        'timestamp': now_iso
-    }]
-    errors = bq_client.insert_rows_json(f"{project_id}.grading_data.course_checkins", row_c)
-    if errors:
-        return jsonify({'success': False, 'error': str(errors)}), 500
-    return jsonify({'success': True})
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'error': 'No data'}), 400
+            
+        target_sid = str(data.get('student_id', '')).split('.')[0].strip()
+        target_name = data.get('student_name', '')
+        course_name = data.get('course_name', '')
+        
+        try:
+            hours = float(data.get('hours', 0))
+        except:
+            hours = 0.0
+        
+        from credentials_utils import get_bq_client
+        bq_client, project_id = get_bq_client()
+        if not bq_client:
+            return jsonify({'success': False, 'error': 'BQ Auth Failed'}), 500
+
+        now_iso = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).isoformat()
+        
+        row_c = [{
+            'student_id': target_sid,
+            'student_name': target_name,
+            'course_name': course_name,
+            'hours': hours,
+            'is_manual': True,
+            'timestamp': now_iso
+        }]
+        
+        errors = bq_client.insert_rows_json(f"{project_id}.grading_data.course_checkins", row_c)
+        if errors:
+            return jsonify({'success': False, 'error': f"BQ Insert Error: {str(errors)}"}), 500
+            
+        return jsonify({'success': True})
+    except Exception as e:
+        logging.error(f"Manual Checkin API Fatal Error: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/admin/attendance_anomalies')
 def api_admin_attendance_anomalies():
