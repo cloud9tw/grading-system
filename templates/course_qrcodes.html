@@ -55,7 +55,8 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for course in courses %}
             <div
-                class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print-break flex flex-col items-center p-6 bg-white">
+                class="course-card bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print-break flex flex-col items-center p-6 cursor-pointer select-none hover:shadow-md transition-shadow"
+                data-url="{{ request.host_url }}course_checkin?course={{ course.課程名稱 | urlencode }}">
                 <div class="w-full mb-4">
                     <span
                         class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 mb-1">
@@ -120,10 +121,10 @@
         </div>
     <!-- 放大置中 Modal -->
     <div id="zoomModal" onclick="closeZoomModal()"
-        class="fixed inset-0 bg-white hidden items-center justify-center z-[200] no-print cursor-pointer">
-        <div class="flex flex-col items-center">
-            <div id="zoomQrContainer" class="p-8 bg-white border-8 border-gray-100 rounded-[3rem] shadow-2xl"></div>
-            <p class="mt-8 text-2xl font-bold text-gray-400">點擊任意處關閉</p>
+        class="fixed inset-0 bg-slate-900/90 hidden items-center justify-center z-[200] no-print cursor-pointer">
+        <div class="flex flex-col items-center" onclick="event.stopPropagation()">
+            <div id="zoomQrContainer" class="p-8 bg-white border-8 border-white rounded-[3rem] shadow-2xl"></div>
+            <p class="mt-8 text-2xl font-bold text-white/50">點擊任意處關閉</p>
         </div>
     </div>
 
@@ -140,9 +141,12 @@
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
+        });
 
-            // 監聽連點事件以放大
-            container.addEventListener('dblclick', function() {
+        // 監聽全卡片連點事件以放大
+        document.querySelectorAll('.course-card').forEach(card => {
+            card.addEventListener('dblclick', function() {
+                const url = this.getAttribute('data-url');
                 openZoomModal(url);
             });
         });
