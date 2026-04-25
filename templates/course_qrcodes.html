@@ -76,7 +76,7 @@
 
                 <div class="w-full flex justify-between items-center no-print mt-auto pt-4 border-t border-gray-50">
                     <span class="text-indigo-600 font-bold text-sm">{{ course.時數 }} 小時</span>
-                    <button onclick="openManualCheckin('{{ course.課程名稱 }}', '{{ course.時數 }}')"
+                    <button onclick="event.stopPropagation(); openManualCheckin('{{ course.課程名稱 }}', '{{ course.時數 }}')"
                         class="text-xs bg-gray-100 text-gray-600 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition font-semibold">
                         手動補登
                     </button>
@@ -113,7 +113,7 @@
                     <input type="text" id="manualName" placeholder="學員姓名"
                         class="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
                 </div>
-                <button onclick="submitManual()" id="submitBtn"
+                <button onclick="event.stopPropagation(); submitManual()" id="submitBtn"
                     class="w-full bg-indigo-600 py-3 rounded-lg text-white font-bold hover:bg-indigo-700 transition shadow-md">
                     確認補登
                 </button>
@@ -141,11 +141,20 @@
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
+            
+            // 連點 QR Code 區域放大
+            container.addEventListener('dblclick', function(e) {
+                e.stopPropagation();
+                openZoomModal(url);
+            });
         });
 
-        // 監聽全卡片連點事件以放大
+        // 監聽全卡片（排除按鈕）連點事件以放大
         document.querySelectorAll('.course-card').forEach(card => {
-            card.addEventListener('dblclick', function() {
+            card.addEventListener('dblclick', function(e) {
+                // 如果點擊的是按鈕或按鈕內的元素，不觸發放大
+                if (e.target.closest('button')) return;
+                
                 const url = this.getAttribute('data-url');
                 openZoomModal(url);
             });
