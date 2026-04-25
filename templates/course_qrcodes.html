@@ -55,7 +55,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for course in courses %}
             <div
-                class="course-card bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print-break flex flex-col items-center p-6 cursor-pointer select-none hover:shadow-md transition-shadow"
+                class="course-card bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print-break flex flex-col items-center p-6 select-none hover:shadow-md transition-shadow"
                 data-url="{{ request.host_url }}course_checkin?course={{ course.課程名稱 | urlencode }}">
                 <div class="w-full mb-4">
                     <span
@@ -130,7 +130,7 @@
 
     <script>
 
-        // 初始化 QR Code
+        // 初始化 QR Code 與點擊放大事件
         document.querySelectorAll('.qr-container').forEach(container => {
             const url = container.getAttribute('data-url');
             new QRCode(container, {
@@ -142,20 +142,10 @@
                 correctLevel: QRCode.CorrectLevel.H
             });
             
-            // 連點 QR Code 區域放大
-            container.addEventListener('dblclick', function(e) {
+            // 點擊 QR Code 區域即放大
+            container.classList.add('cursor-zoom-in');
+            container.addEventListener('click', function(e) {
                 e.stopPropagation();
-                openZoomModal(url);
-            });
-        });
-
-        // 監聽全卡片（排除按鈕）連點事件以放大
-        document.querySelectorAll('.course-card').forEach(card => {
-            card.addEventListener('dblclick', function(e) {
-                // 如果點擊的是按鈕或按鈕內的元素，不觸發放大
-                if (e.target.closest('button')) return;
-                
-                const url = this.getAttribute('data-url');
                 openZoomModal(url);
             });
         });
