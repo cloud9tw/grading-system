@@ -1360,16 +1360,18 @@ def get_student_progress_analysis():
         logs = []
         bq_client, project_id = get_bq_client()
         if bq_client:
+            from privacy_utils import get_code
+            anon_code = get_code(student_name, 'student')
+            
             q = f"""
                 SELECT station, timestamp
                 FROM `{project_id}.grading_data.grading_logs` 
-                WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) 
+                WHERE (student_id = @code OR student_name = @code) 
                 AND (is_deleted = FALSE OR is_deleted IS NULL)
             """
             job_config = bigquery.QueryJobConfig(
                 query_parameters=[
-                    bigquery.ScalarQueryParameter("sid", "STRING", student_id),
-                    bigquery.ScalarQueryParameter("sname", "STRING", student_name)
+                    bigquery.ScalarQueryParameter("code", "STRING", anon_code)
                 ]
             )
             res = bq_client.query(q, job_config=job_config).result()
@@ -1525,19 +1527,28 @@ def get_config():
         try:
             bq_client, project_id = get_bq_client()
             if bq_client:
+                from privacy_utils import decode_name
+                # 建立 姓名 -> ID 的對應表，因為 BQ 存的是代碼，還原後是姓名，前端需要 ID 作為 Key
+                name_to_id = {s['name']: s['id'] for s in students}
+
                 # 抓取 student_id, station, body_part, 以及兩個面向欄位
                 q_stats = f"SELECT student_id, station, body_part, aspect1, aspect2 FROM `{project_id}.grading_data.grading_logs` WHERE is_deleted = FALSE OR is_deleted IS NULL"
                 stats_results = list(bq_client.query(q_stats).result(timeout=20))
                 
                 for r in stats_results:
-                    # ID 標準化：去掉可能的小數點，並確保為字串
-                    sid_raw = str(r.student_id).strip()
-                    sid = sid_raw.split('.')[0] if '.' in sid_raw else sid_raw
+                    # BQ 內的 student_id 現在是匿名代碼
+                    anon_id = str(r.student_id).strip()
+                    # 還原為真實姓名
+                    real_name = decode_name(anon_id)
+                    # 轉換為真實 ID (前端 Key)
+                    sid = name_to_id.get(real_name)
+                    
+                    if not sid: continue
                     
                     stn = str(r.station).strip()
                     bpart = str(r.body_part).strip()
                     
-                    if not sid or not stn or stn == 'None': continue
+                    if not stn or stn == 'None': continue
                     
                     if sid not in student_stats:
                         student_stats[sid] = {'stations': {}}
@@ -1596,11 +1607,17 @@ def get_student_stats():
         target_name = str(student_info.get('name', '')).strip()
 
     try:
+        from privacy_utils import get_code, decode_name
+        anon_s_code = get_code(target_name, 'student')
+        
         records_by_station = {}
         bq_client, project_id = get_bq_client()
         if bq_client:
-            q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, teacher_name, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
-            job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("sid", "STRING", target_id), bigquery.ScalarQueryParameter("sname", "STRING", target_name)])
+            # BQ 內 student_id 與 student_name 現在存的都是匿名代碼
+            q = f"SELECT station, timestamp, opa1_sum, opa2_sum, opa3_sum, teacher_name, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (student_id = @code OR student_name = @code) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+            job_config = bigquery.QueryJobConfig(query_parameters=[
+                bigquery.ScalarQueryParameter("code", "STRING", anon_s_code)
+            ])
             res = bq_client.query(q, job_config=job_config).result(timeout=20)
             def to_int(v):
                 try: return int(v)
@@ -1608,9 +1625,12 @@ def get_student_stats():
             for r in res:
                 stn = str(r.station or 'Unknown').strip()
                 if stn not in records_by_station: records_by_station[stn] = []
+                # 將 BQ 內的教師代碼還原為姓名顯示
+                teacher_display = decode_name(str(r.teacher_name or ''))
+                
                 records_by_station[stn].append({
                     'time': r.timestamp.strftime('%Y/%m/%d %H:%M:%S') if r.timestamp else '',
-                    'teacher': r.teacher_name or '未知',
+                    'teacher': teacher_display or '未知',
                     'opa1': to_int(r.opa1_sum), 'opa2': to_int(r.opa2_sum), 'opa3': to_int(r.opa3_sum),
                     'aspect1': r.aspect1 or '', 'aspect2': r.aspect2 or '', 'comment': r.comment or ''
                 })
@@ -1932,17 +1952,17 @@ def get_student_attendance():
         return jsonify({'success': False, 'error': 'No student info found.'}), 400
         
     try:
-        # Prepare name variations to avoid REPLACE in SQL
-        name_orig = student_info['name']
-        name_clean = name_orig.replace(' ', '').replace('　', '')
-        search_names = list(set([name_orig, name_clean]))
+        from privacy_utils import get_code, decode_name
+        # 將真實姓名轉換為去識別化代碼
+        anon_s_code = get_code(student_info['name'], 'student')
         
         history = []
         bq_client, project_id = get_bq_client()
         if bq_client:
-            q = f"SELECT sub_room, check_in_time, check_out_time, teacher_name, co_teacher FROM `{project_id}.grading_data.attendance_daily_summary` WHERE student_name IN UNNEST(@names) ORDER BY check_in_time DESC"
+            # BQ 內的 student_name 現在存的是代碼
+            q = f"SELECT sub_room, check_in_time, check_out_time, teacher_name, co_teacher FROM `{project_id}.grading_data.attendance_daily_summary` WHERE student_name = @code ORDER BY check_in_time DESC"
             job_config = bigquery.QueryJobConfig(
-                query_parameters=[bigquery.ArrayQueryParameter("names", "STRING", search_names)]
+                query_parameters=[bigquery.ScalarQueryParameter("code", "STRING", anon_s_code)]
             )
             # Add explicit timeout of 20 seconds to prevent hanging the Flask thread
             query_job = bq_client.query(q, job_config=job_config)
@@ -1951,11 +1971,14 @@ def get_student_attendance():
             for r in res:
                 # Convert row to dict for safer access across different versions of BQ client
                 row_dict = dict(r)
+                # 將 BQ 內的教師代碼還原為姓名顯示
+                teacher_display = decode_name(row_dict.get('teacher_name', ''))
+                
                 history.append({
                     'room': row_dict.get('sub_room', ''),
                     'check_in': row_dict.get('check_in_time').strftime('%Y/%m/%d %H:%M:%S') if row_dict.get('check_in_time') else '',
                     'check_out': row_dict.get('check_out_time').strftime('%Y/%m/%d %H:%M:%S') if row_dict.get('check_out_time') else '',
-                    'teacher': row_dict.get('teacher_name', ''),
+                    'teacher': teacher_display,
                     'co_teacher': row_dict.get('co_teacher', ''),
                     'is_complete': bool(row_dict.get('check_in_time') and row_dict.get('check_out_time'))
                 })
@@ -2037,21 +2060,27 @@ def get_student_report_data():
         target_name = str(student_info.get('name', '')).strip()
 
     try:
+        from privacy_utils import get_code
+        # 將真實身分轉換為去識別化代碼以利 BQ 查詢
+        anon_code = get_code(target_name, 'student')
+        
         bq_client, project_id = get_bq_client()
         if not bq_client: return jsonify({'success': False, 'error': 'BQ Error'}), 500
         
-        q = f"SELECT teacher_name, station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (CAST(student_id AS STRING) = @sid OR student_name = @sname) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
+        # BQ 內 student_id 與 student_name 現在存的都是匿名代碼
+        q = f"SELECT teacher_name, station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (student_id = @code OR student_name = @code) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
         job_config = bigquery.QueryJobConfig(query_parameters=[
-            bigquery.ScalarQueryParameter("sid", "STRING", target_id),
-            bigquery.ScalarQueryParameter("sname", "STRING", target_name)
+            bigquery.ScalarQueryParameter("code", "STRING", anon_code)
         ])
         results = list(bq_client.query(q, job_config=job_config).result(timeout=20))
         
         # 返回原始數據供前端動態切換站別
         raw_logs = []
         for r in results:
+            # 將 BQ 內的教師代碼還原為姓名顯示
+            teacher_display = decode_name(str(r.teacher_name or ''))
             raw_logs.append({
-                'teacher': str(r.teacher_name or '未知'),
+                'teacher': teacher_display or '未知',
                 'station': str(r.station or '未知'),
                 'date': r.timestamp.strftime('%Y-%m-%d'),
                 'm_d': r.timestamp.strftime('%m/%d'),

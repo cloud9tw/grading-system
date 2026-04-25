@@ -1,55 +1,75 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>學員評分系統 - 登入</title>
+    <title>影像醫學部教育管理系統 - 登入</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
     </style>
 </head>
-<body class="min-h-screen flex items-center justify-center p-4 bg-cover bg-center bg-no-repeat" style="background-image: url('{{ url_for('static', filename='login_bg.png') }}');">
-    <div class="bg-white/25 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md p-10 text-center border border-white/30 ring-1 ring-black/5">
-        <div class="w-24 h-24 bg-white/40 text-indigo-700 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
-            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4"></path>
+
+<body class="min-h-screen flex items-center justify-center p-4 bg-cover bg-center bg-no-repeat"
+    style="background-image: url('{{ url_for('static', filename='login_bg.png') }}');">
+    <div
+        class="bg-white/25 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-md p-10 text-center border border-white/30 ring-1 ring-black/5">
+        <div
+            class="w-24 h-24 bg-white/40 text-indigo-700 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+            <svg class="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4">
+                </path>
             </svg>
         </div>
-        
-        <h1 class="text-4xl font-black text-gray-900 mb-2 tracking-tight">學員評分系統</h1>
-        <p class="text-gray-700 font-medium mb-10">臨床教師專屬行動化評分平台</p>
-        
-        <a href="/login" class="flex items-center justify-center w-full px-6 py-4 bg-indigo-600 text-white text-lg font-bold rounded-xl shadow-lg hover:bg-indigo-700 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200">
+
+        <h1 class="text-4xl font-black text-gray-900 mb-2 tracking-tight">影像醫學部教育管理系統</h1>
+        <p class="text-gray-700 font-medium mb-10">臨床教育整合平台</p>
+
+        <a href="/login"
+            class="flex items-center justify-center w-full px-6 py-4 bg-indigo-600 text-white text-lg font-bold rounded-xl shadow-lg hover:bg-indigo-700 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200">
             <svg class="w-7 h-7 mr-3" viewBox="0 0 48 48">
-                <path fill="#FFFFFF" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                <path fill="#FFFFFF" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                <path fill="#FFFFFF" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                <path fill="#FFFFFF" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                <path fill="#FFFFFF"
+                    d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#FFFFFF"
+                    d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FFFFFF"
+                    d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#FFFFFF"
+                    d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
             </svg>
             使用 Google 帳號登入
         </a>
 
         <!-- 申請權限區塊 -->
         <div class="mt-10 pt-8 border-t border-gray-200/50">
-            <button onclick="document.getElementById('requestForm').classList.toggle('hidden')" class="text-sm text-gray-500 hover:text-indigo-600 transition-colors font-medium">
+            <button onclick="document.getElementById('requestForm').classList.toggle('hidden')"
+                class="text-sm text-gray-500 hover:text-indigo-600 transition-colors font-medium">
                 想用自己的 Google 帳號登入？點此申請登記
             </button>
-            
+
             <div id="requestForm" class="hidden mt-6 text-left bg-gray-50/50 p-6 rounded-xl border border-gray-100">
                 <p class="text-xs text-gray-500 mb-4">請填寫以下資訊，系統管理員將會收到通知並為您開通權限。</p>
                 <form action="/api/request_access" method="POST" class="space-y-4">
                     <div>
                         <label class="block text-xs font-bold text-gray-600 uppercase mb-1">教師姓名</label>
-                        <input type="text" name="teacher_name" required placeholder="例如：王小明" class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm">
+                        <input type="text" name="teacher_name" required placeholder="例如：王小明"
+                            class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm">
                     </div>
                     <div>
                         <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Gmail 帳號</label>
-                        <input type="email" name="teacher_email" required placeholder="yourname@gmail.com" class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm">
+                        <input type="email" name="teacher_email" required placeholder="yourname@gmail.com"
+                            class="w-full px-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all text-sm">
                     </div>
-                    <button type="submit" class="w-full py-2 bg-gray-800 text-white font-bold rounded-lg hover:bg-black transition-colors text-sm shadow-md">
+                    <button type="submit"
+                        class="w-full py-2 bg-gray-800 text-white font-bold rounded-lg hover:bg-black transition-colors text-sm shadow-md">
                         送出申請通知
                     </button>
                 </form>
@@ -69,4 +89,5 @@
         }
     </script>
 </body>
+
 </html>
