@@ -153,13 +153,12 @@
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-slate-900 text-white text-[11px] font-bold uppercase tracking-widest">
                         <tr>
+                            <th class="px-6 py-4">類型</th>
                             <th class="px-6 py-4">評核教師</th>
                             <th class="px-6 py-4">日期</th>
                             <th class="px-6 py-4">站別</th>
-                            <th class="px-6 py-4 text-center">OPA1</th>
-                            <th class="px-6 py-4 text-center">OPA2</th>
-                            <th class="px-6 py-4 text-center">OPA3</th>
-                            <th class="px-6 py-4">質性回饋</th>
+                            <th class="px-6 py-4 text-center">評核指標 / 分數</th>
+                            <th class="px-6 py-4">質性回饋 / 教學內容</th>
                         </tr>
                     </thead>
                     <tbody id="logsTable" class="text-sm divide-y divide-slate-100">
@@ -401,16 +400,43 @@
         function updateLogsTable(data) {
             const tbody = document.getElementById('logsTable');
             tbody.innerHTML = '';
-            data.slice().reverse().forEach(log => {
+            
+            data.forEach(log => {
                 const tr = document.createElement('tr');
+                
+                // 根據類型決定標籤顏色
+                let typeTag = '';
+                if (log.type === 'EPA') typeTag = '<span class="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[10px] font-bold">EPA</span>';
+                else if (log.type === 'DOPS') typeTag = '<span class="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[10px] font-bold">DOPS</span>';
+                else if (log.type === 'MiniCEX') typeTag = '<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-bold">MiniCEX</span>';
+                else typeTag = '<span class="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-bold">教學</span>';
+
+                // 根據類型決定顯示內容
+                let scoreDisplay = '';
+                let contentDisplay = log.comment || '無';
+
+                if (log.type === 'EPA') {
+                    scoreDisplay = `
+                        <div class="flex justify-center gap-2">
+                            <span class="text-indigo-600 font-bold" title="OPA1">${log.opa1}</span>
+                            <span class="text-emerald-600 font-bold" title="OPA2">${log.opa2}</span>
+                            <span class="text-amber-600 font-bold" title="OPA3">${log.opa3}</span>
+                        </div>
+                    `;
+                } else if (log.type === 'DOPS' || log.type === 'MiniCEX') {
+                    scoreDisplay = `<div class="text-center font-black text-slate-700">總分: ${log.score}</div>`;
+                } else {
+                    scoreDisplay = `<div class="text-center text-slate-400">-</div>`;
+                    if (log.content) contentDisplay = `<b>[${log.content}]</b> ${contentDisplay}`;
+                }
+
                 tr.innerHTML = `
+                    <td class="px-6 py-4">${typeTag}</td>
                     <td class="px-6 py-4 font-bold text-slate-700 text-xs">${log.teacher}</td>
                     <td class="px-6 py-4 text-slate-500 font-mono text-[11px]">${log.date}</td>
                     <td class="px-6 py-4"><span class="bg-indigo-50 text-indigo-700 text-[10px] font-black px-2 py-1 rounded-md uppercase">${log.station}</span></td>
-                    <td class="px-6 py-4 text-center font-bold text-indigo-600">${log.opa1}</td>
-                    <td class="px-6 py-4 text-center font-bold text-emerald-600">${log.opa2}</td>
-                    <td class="px-6 py-4 text-center font-bold text-amber-600">${log.opa3}</td>
-                    <td class="px-6 py-4 text-slate-500 text-xs italic truncate max-w-[200px]" title="${log.comment}">${log.comment}</td>
+                    <td class="px-6 py-4">${scoreDisplay}</td>
+                    <td class="px-6 py-4 text-slate-500 text-xs italic truncate max-w-[250px]" title="${contentDisplay}">${contentDisplay}</td>
                 `;
                 tbody.appendChild(tr);
             });

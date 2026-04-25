@@ -2096,22 +2096,20 @@ def get_student_report_data():
         bq_client, project_id = get_bq_client()
         if not bq_client: return jsonify({'success': False, 'error': 'BQ Error'}), 500
         
-        # BQ 內 student_id 與 student_name 現在存的都是匿名代碼
-        q = f"SELECT teacher_name, station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (student_id = @code OR student_name = @code) AND (is_deleted = FALSE OR is_deleted IS NULL) ORDER BY timestamp ASC"
-        job_config = bigquery.QueryJobConfig(query_parameters=[
-            bigquery.ScalarQueryParameter("code", "STRING", anon_code)
-        ])
-        results = list(bq_client.query(q, job_config=job_config).result(timeout=20))
+        # 1. 抓取 EPA Grading Logs
+        q_epa = f"SELECT teacher_name, station, timestamp, opa1_sum, opa2_sum, opa3_sum, aspect1, aspect2, comment FROM `{project_id}.grading_data.grading_logs` WHERE (student_id = @code OR student_name = @code) AND (is_deleted = FALSE OR is_deleted IS NULL)"
+        job_config = bigquery.QueryJobConfig(query_parameters=[bigquery.ScalarQueryParameter("code", "STRING", anon_code)])
+        epa_results = bq_client.query(q_epa, job_config=job_config).result(timeout=20)
         
-        # 返回原始數據供前端動態切換站別
         raw_logs = []
-        for r in results:
-            # 將 BQ 內的教師代碼還原為姓名顯示
+        for r in epa_results:
             teacher_display = decode_name(str(r.teacher_name or ''))
             raw_logs.append({
+                'type': 'EPA',
                 'teacher': teacher_display or '未知',
                 'station': str(r.station or '未知'),
                 'date': r.timestamp.strftime('%Y-%m-%d'),
+                'timestamp': r.timestamp.isoformat(),
                 'm_d': r.timestamp.strftime('%m/%d'),
                 'opa1': float(r.opa1_sum or 0) if str(r.opa1_sum).replace('.','').isdigit() else 0,
                 'opa2': float(r.opa2_sum or 0) if str(r.opa2_sum).replace('.','').isdigit() else 0,
@@ -2120,7 +2118,55 @@ def get_student_report_data():
                 'aspect2': float(r.aspect2 or 0) if str(r.aspect2).replace('.','').isdigit() else 0,
                 'comment': str(r.comment or '無質性回饋').strip()
             })
-            
+
+        # 2. 抓取 CEEP DOPS
+        q_dops = f"SELECT timestamp, station, score, feedback FROM `{project_id}.grading_data.dops_logs` WHERE student_name = @code"
+        dops_results = bq_client.query(q_dops, job_config=job_config).result(timeout=20)
+        for r in dops_results:
+            raw_logs.append({
+                'type': 'DOPS',
+                'teacher': 'CEEP 系統',
+                'station': str(r.station or '未知'),
+                'date': r.timestamp.strftime('%Y-%m-%d') if r.timestamp else '未知',
+                'timestamp': r.timestamp.isoformat() if r.timestamp else '',
+                'm_d': r.timestamp.strftime('%m/%d') if r.timestamp else '',
+                'score': float(r.score or 0),
+                'comment': str(r.feedback or '').strip()
+            })
+
+        # 3. 抓取 CEEP MiniCEX
+        q_cex = f"SELECT timestamp, station, score, feedback FROM `{project_id}.grading_data.minicex_logs` WHERE student_name = @code"
+        cex_results = bq_client.query(q_cex, job_config=job_config).result(timeout=20)
+        for r in cex_results:
+            raw_logs.append({
+                'type': 'MiniCEX',
+                'teacher': 'CEEP 系統',
+                'station': str(r.station or '未知'),
+                'date': r.timestamp.strftime('%Y-%m-%d') if r.timestamp else '未知',
+                'timestamp': r.timestamp.isoformat() if r.timestamp else '',
+                'm_d': r.timestamp.strftime('%m/%d') if r.timestamp else '',
+                'score': float(r.score or 0),
+                'comment': str(r.feedback or '').strip()
+            })
+
+        # 4. 抓取 CEEP 教學記錄
+        q_teach = f"SELECT timestamp, station, content, feedback FROM `{project_id}.grading_data.teaching_logs` WHERE student_name = @code"
+        teach_results = bq_client.query(q_teach, job_config=job_config).result(timeout=20)
+        for r in teach_results:
+            raw_logs.append({
+                'type': '教學記錄',
+                'teacher': 'CEEP 系統',
+                'station': str(r.station or '未知'),
+                'date': r.timestamp.strftime('%Y-%m-%d') if r.timestamp else '未知',
+                'timestamp': r.timestamp.isoformat() if r.timestamp else '',
+                'm_d': r.timestamp.strftime('%m/%d') if r.timestamp else '',
+                'content': str(r.content or '').strip(),
+                'comment': str(r.feedback or '').strip()
+            })
+
+        # 統一按時間降序排列 (最新在前)
+        raw_logs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+
         return jsonify({
             'success': True,
             'raw_logs': raw_logs
