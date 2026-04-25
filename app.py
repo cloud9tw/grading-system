@@ -2209,6 +2209,11 @@ def admin_portal():
     if not user or not session.get('is_admin'):
         return render_template('error.html', message='權限不足：此頁面僅限系統管理員進入。'), 403
     
+    # 確保跳回管理中心時，清除預覽模式與學員身分切換的殘留
+    session.pop('is_preview_mode', None)
+    session.pop('preview_student_info', None)
+    session['current_role'] = 'teacher' # 強制切換回老師/管理者視角
+    
     # 傳遞 Sheets ID 供前端產生連結
     sheet_id = os.getenv("GOOGLE_SHEET_ID")
     sheet_feedback = "112l_e3WKbIkFYj58nv8LRTYEvfyDpXMh-NcSe98T07w"

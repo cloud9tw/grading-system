@@ -258,6 +258,7 @@ def get_bq_gamification_logs():
     Returns: (grading_counts, feedback_counts)
     """
     try:
+        from privacy_utils import decode_name
         try:
             credentials = service_account.Credentials.from_service_account_file('credentials.json')
             client = bigquery.Client(credentials=credentials, project=credentials.project_id)
@@ -269,9 +270,8 @@ def get_bq_gamification_logs():
             client = bigquery.Client(credentials=credentials, project=project)
         
         # 1. Aggregated Grading Logs: Count per (student_id, student_name, station, body_part)
-        # Using CAST to ensure student_id is always a string matching our session '8' vs '8.0'
         q_gps = f"""
-            SELECT CAST(student_id AS STRING) as sid, student_name as sname, 
+            SELECT student_id as sid, student_name as sname, 
                    station, body_part, COUNT(*) as cnt 
             FROM `{project}.grading_data.grading_logs` 
             WHERE is_deleted = FALSE OR is_deleted IS NULL 
@@ -280,18 +280,18 @@ def get_bq_gamification_logs():
         res_gps = client.query(q_gps).result()
         
         # Index by student_id and clean student_name
-        grading_counts = {} # { "8": [ {station, body_part, cnt}, ... ], "張明暉": [...] }
+        grading_counts = {}
         for r in res_gps:
-            sid = str(r.sid).split('.')[0]
-            sname = str(r.sname).strip().replace(' ', '').replace('　', '')
+            # BQ 內存的是匿名代碼，我們需要還原為姓名來比對
+            anon_id = str(r.sid).strip()
+            real_name = decode_name(anon_id)
+            if not real_name: continue
+            
+            sname = real_name.replace(' ', '').replace('　', '')
             entry = {"station": r.station, "body_part": r.body_part, "cnt": r.cnt}
             
-            if sid:
-                if sid not in grading_counts: grading_counts[sid] = []
-                grading_counts[sid].append(entry)
-            if sname:
-                if sname not in grading_counts: grading_counts[sname] = []
-                grading_counts[sname].append(entry)
+            if sname not in grading_counts: grading_counts[sname] = []
+            grading_counts[sname].append(entry)
             
         # 2. Aggregated Feedback Logs: Count per (student_name, department)
         q_fps = f"""
@@ -303,7 +303,11 @@ def get_bq_gamification_logs():
         res_fps = client.query(q_fps).result()
         feedback_counts = {}
         for r in res_fps:
-            sname = str(r.sname).strip().replace(' ', '').replace('　', '')
+            # 這裡同樣需要還原匿名代碼 (如果是去識別化後的資料)
+            anon_name = str(r.sname).strip()
+            real_name = decode_name(anon_name)
+            
+            sname = (real_name or anon_name).replace(' ', '').replace('　', '')
             if sname:
                 if sname not in feedback_counts: feedback_counts[sname] = []
                 feedback_counts[sname].append({"dept": r.dept, "cnt": r.cnt})
