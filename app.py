@@ -2708,5 +2708,6 @@ def admin_ai_analysis():
     return render_template('ai_ilp.html', students=students)
 
 if __name__ == '__main__':
-    # run locally on port 5000
-    app.run(debug=True, port=5000)
+    # 支持 Cloud Run 的動態 Port 綁定，本地預設 5000
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)

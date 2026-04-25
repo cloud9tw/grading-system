@@ -305,7 +305,14 @@ SYSTEM_PROMPT = """
 # ==========================================
 
 # 初始化 OpenAI Client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+def get_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        return OpenAI(api_key=api_key)
+    except:
+        return None
 
 def fetch_student_performance_data(student_name):
     """
@@ -378,6 +385,10 @@ def generate_ilp_chatgpt(student_name):
         user_content += f"- {c['source']}: {c['content']}\n"
 
     try:
+        client = get_openai_client()
+        if not client:
+            return "AI 分析失敗：未偵測到 OpenAI API Key，請檢查伺服器環境變數設定。"
+            
         response = client.chat.completions.create(
             model="gpt-4o", # 建議使用 gpt-4o 或 gpt-4o-mini
             messages=[
