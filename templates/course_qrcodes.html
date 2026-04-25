@@ -117,12 +117,9 @@
             
             <div class="space-y-6">
                 <div>
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">學員學號</label>
-                    <input type="text" id="m_sid" class="w-full bg-gray-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-700">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">學員姓名</label>
-                    <input type="text" id="m_name" class="w-full bg-gray-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-700">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">學員學號 或 教師員編</label>
+                    <input type="text" id="m_sid" placeholder="例如: 12345" class="w-full bg-gray-50 border-none rounded-2xl p-4 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-gray-700">
+                    <p class="mt-2 text-[10px] text-gray-400 font-medium">※ 系統將根據 ID 自動比對姓名</p>
                 </div>
                 <button onclick="doManualCheckin()" id="m_btn" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-blue-200 hover:bg-blue-700 transition transform active:scale-95">
                     確認補登
@@ -171,6 +168,7 @@
             _curHours = hours;
             document.getElementById('manualCourseName').innerText = name;
             document.getElementById('manualOverlay').classList.add('active');
+            document.getElementById('m_sid').value = "";
         };
 
         window.closeManual = function() {
@@ -179,19 +177,21 @@
 
         async function doManualCheckin() {
             const sid = document.getElementById('m_sid').value.trim();
-            const name = document.getElementById('m_name').value.trim();
             const btn = document.getElementById('m_btn');
-            if(!sid || !name) return alert("請完整填寫學號與姓名");
+            if(!sid) return alert("請輸入學號或員編");
 
-            btn.disabled = true; btn.innerText = "處理中...";
+            btn.disabled = true; btn.innerText = "查找中...";
             try {
                 const r = await fetch('/api/admin/manual_checkin', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ student_id: sid, student_name: name, course_name: _curCourse, hours: _curHours })
+                    body: JSON.stringify({ student_id: sid, course_name: _curCourse, hours: _curHours })
                 });
                 const res = await r.json();
-                if(res.success) { alert("補登成功！"); closeManual(); }
+                if(res.success) { 
+                    alert(res.msg || "補登成功！"); 
+                    closeManual(); 
+                }
                 else { alert("失敗: " + (res.error || "未知錯誤")); }
             } catch(e) { alert("連線失敗: " + e.message); }
             finally { btn.disabled = false; btn.innerText = "確認補登"; }

@@ -347,6 +347,7 @@ def authorize():
             doc = gc.open_by_key(sheet_id)
             
             # Check Teacher
+            # Detect Teacher Role & Info
             sheet_teachers = doc.worksheet('教師名單')
             teachers_records = safe_get_all_records(sheet_teachers)
             is_admin = False
@@ -354,13 +355,20 @@ def authorize():
                 t_email = str(t.get('教師_Email', '')).strip().lower()
                 if t_email == user_email:
                     roles.append('teacher')
+                    # Populate student_info even for teachers to support course checkins
+                    student_info = {
+                        'id': str(t.get('員編', '')).strip() or str(t.get('ID', '')).strip(),
+                        'name': str(t.get('姓名', '')).strip() or str(t.get('教師姓名', '')).strip(),
+                        'type': '教師',
+                        'gender': 'N/A'
+                    }
                     # Detect Admin Privilege
                     if str(t.get('管理員權限', '')).strip().lower() == 'admin':
                         is_admin = True
                     break
             session['is_admin'] = is_admin
                     
-            # Check Student
+            # Check Student (Student info overrides teacher info for course checkin purposes if both exist, but usually we handle it)
             sheet_students = doc.worksheet('學員名單')
             students_records = safe_get_all_records(sheet_students)
             for s in students_records:
@@ -368,7 +376,7 @@ def authorize():
                 if s_email == user_email:
                     roles.append('student')
                     student_info = {
-                        'id': str(s.get('學生ID', '')).strip(),
+                        'id': str(s.get('學生ID', '')).strip() or str(s.get('學號', '')).strip(),
                         'name': str(s.get('姓名', '')),
                         'type': str(s.get('學員類別', '')),
                         'gender': str(s.get('性別', ''))
@@ -2531,34 +2539,59 @@ def api_course_checkin():
 @app.route('/api/admin/manual_checkin', methods=['POST'])
 def api_admin_manual_checkin():
     user = session.get('user')
-    # 統一使用管理員權限檢查
     if not user or not session.get('is_admin'):
         return jsonify({'success': False, 'error': 'Forbidden'}), 403
     
     try:
         data = request.json
-        if not data:
-            return jsonify({'success': False, 'error': 'No data'}), 400
-            
-        target_sid = str(data.get('student_id', '')).split('.')[0].strip()
-        target_name = data.get('student_name', '')
+        target_id = str(data.get('student_id', '')).split('.')[0].strip()
         course_name = data.get('course_name', '')
-        
         try:
             hours = float(data.get('hours', 0))
         except:
             hours = 0.0
+
+        if not target_id:
+            return jsonify({'success': False, 'error': '請提供學號或員編'}), 400
+
+        # --- 自動查找姓名 ---
+        gc = get_gspread_client()
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        doc = gc.open_by_key(sheet_id)
         
+        found_name = None
+        # 1. 查學員名單
+        try:
+            ws_st = doc.worksheet('學員名單')
+            st_records = safe_get_all_records(ws_st)
+            for r in st_records:
+                if str(r.get('學號', '')).strip() == target_id or str(r.get('ID', '')).strip() == target_id:
+                    found_name = str(r.get('姓名', '')).strip()
+                    break
+        except: pass
+
+        # 2. 如果沒找到，查教師名單
+        if not found_name:
+            try:
+                ws_tc = doc.worksheet('教師名單')
+                tc_records = safe_get_all_records(ws_tc)
+                for r in tc_records:
+                    if str(r.get('員編', '')).strip() == target_id or str(r.get('ID', '')).strip() == target_id:
+                        found_name = str(r.get('姓名', '')).strip()
+                        break
+            except: pass
+
+        if not found_name:
+            return jsonify({'success': False, 'error': f'找不到 ID 為 {target_id} 的人員紀錄，請確認名單是否有誤。'}), 404
+
+        # --- 寫入 BigQuery ---
         from credentials_utils import get_bq_client
         bq_client, project_id = get_bq_client()
-        if not bq_client:
-            return jsonify({'success': False, 'error': 'BQ Auth Failed'}), 500
-
         now_iso = (datetime.datetime.utcnow() + datetime.timedelta(hours=8)).isoformat()
         
         row_c = [{
-            'student_id': target_sid,
-            'student_name': target_name,
+            'student_id': target_id,
+            'student_name': found_name,
             'course_name': course_name,
             'hours': hours,
             'is_manual': True,
@@ -2569,7 +2602,7 @@ def api_admin_manual_checkin():
         if errors:
             return jsonify({'success': False, 'error': f"BQ Insert Error: {str(errors)}"}), 500
             
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'msg': f'已為 {found_name} 完成補登'})
     except Exception as e:
         logging.error(f"Manual Checkin API Fatal Error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
