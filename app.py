@@ -2684,8 +2684,8 @@ def api_admin_sync_bq():
 
 @app.route('/admin/ai_analysis', methods=['GET', 'POST'])
 def admin_ai_analysis():
-    if not session.get('user'): return redirect(url_for('login'))
-    if 'admin' not in session.get('roles', []): return "權限不足", 403
+    if not session.get('user') or not session.get('is_admin'):
+        return render_template('error.html', message='權限不足：此頁面僅限系統管理員進入。'), 403
     
     if request.method == 'POST':
         student_name = request.form.get('student_name')
