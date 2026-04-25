@@ -2560,24 +2560,27 @@ def api_admin_manual_checkin():
         doc = gc.open_by_key(sheet_id)
         
         found_name = None
-        # 1. 查學員名單
+        # 1. 查學員名單 (正確欄位: 學生ID, 姓名)
         try:
             ws_st = doc.worksheet('學員名單')
             st_records = safe_get_all_records(ws_st)
             for r in st_records:
-                if str(r.get('學號', '')).strip() == target_id or str(r.get('ID', '')).strip() == target_id:
+                # 處理可能是 12345.0 的情況
+                sheet_sid = str(r.get('學生ID', '')).split('.')[0].strip()
+                if sheet_sid == target_id:
                     found_name = str(r.get('姓名', '')).strip()
                     break
         except: pass
 
-        # 2. 如果沒找到，查教師名單
+        # 2. 如果沒找到，查教師名單 (正確欄位: 教師員編, 教師姓名)
         if not found_name:
             try:
                 ws_tc = doc.worksheet('教師名單')
                 tc_records = safe_get_all_records(ws_tc)
                 for r in tc_records:
-                    if str(r.get('員編', '')).strip() == target_id or str(r.get('ID', '')).strip() == target_id:
-                        found_name = str(r.get('姓名', '')).strip()
+                    sheet_tid = str(r.get('教師員編', '')).split('.')[0].strip()
+                    if sheet_tid == target_id:
+                        found_name = str(r.get('教師姓名', '')).strip()
                         break
             except: pass
 
