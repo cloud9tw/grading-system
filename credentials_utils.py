@@ -11,25 +11,40 @@ def get_bq_client():
     優先順序：1. 本地 credentials.json 2. 環境變數 JSON 字串 3. GCP 環境預設憑證
     """
     try:
-        # [策略 1] 優先嘗試從本地檔案讀取 (適用於 Windows/本地開發環境)
-        if os.path.exists('credentials.json'):
-            credentials = service_account.Credentials.from_service_account_file('credentials.json')
-            bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
-            return bq_client, credentials.project_id
+        # [修正] 使用絕對路徑確保無論從哪個目錄啟動都能找到檔案
+        base_dir = os.path.dirname(os.path.abspath(__file__))
         
-        # [策略 2] 針對 Cloud Run 等無檔案環境，從環境變數讀取 JSON 字串內容
+        # 取得可能的憑證路徑
+        env_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_CREDENTIALS_JSON")
+        
+        # 候選路徑清單
+        candidate_files = ['credentials.json']
+        if env_path and not env_path.strip().startswith('{'):
+            candidate_files.insert(0, env_path) # 如果環境變數是個檔名，優先嘗試
+            
+        for fname in candidate_files:
+            # 嘗試相對路徑與絕對路徑
+            paths = [fname, os.path.join(base_dir, fname)]
+            for p in paths:
+                if os.path.exists(p):
+                    try:
+                        credentials = service_account.Credentials.from_service_account_file(p)
+                        bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
+                        return bq_client, credentials.project_id
+                    except Exception as e:
+                        logging.error(f"⚠️ 嘗試使用憑證檔案 {p} 失敗: {e}")
+
+        # [策略 2] 針對 Cloud Run 等環境，從環境變數讀取 JSON 字串內容
         json_str = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or os.getenv("GOOGLE_CREDENTIALS_JSON")
         if json_str and json_str.strip().startswith('{'):
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w+', delete=False, suffix='.json') as f:
-                f.write(json_str)
-                temp_path = f.name
             try:
-                credentials = service_account.Credentials.from_service_account_file(temp_path)
+                import tempfile
+                creds_dict = json.loads(json_str)
+                credentials = service_account.Credentials.from_service_account_info(creds_dict)
                 bq_client = bigquery.Client(credentials=credentials, project=credentials.project_id)
                 return bq_client, credentials.project_id
-            finally:
-                if os.path.exists(temp_path): os.remove(temp_path)
+            except Exception as e:
+                logging.error(f"⚠️ 從環境變數 JSON 解析失敗: {e}")
 
         # [策略 3] 最後嘗試使用 GCP Application Default Credentials
         import google.auth
