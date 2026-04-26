@@ -12,3 +12,5 @@ requests
 werkzeug
 gunicorn
 playwright
+authlib
+cryptography
