@@ -53,6 +53,7 @@ def get_bq_client():
         bq_client = bigquery.Client(credentials=credentials, project=project)
         return bq_client, project
     except Exception as e:
+        import logging
         logging.error(f"❌ BigQuery 初始化失敗: {e}")
         return None, None
 

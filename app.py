@@ -10,10 +10,7 @@ from authlib.integrations.flask_client import OAuth
 import gspread
 from dotenv import load_dotenv
 import threading
-from ceep_scraper import scrape_ceep_all_forms
-from ceep_archiver import archive_to_sheets
-from sync_to_bq import sync_all as sync_to_bq_all
-from ai_handler import generate_ilp_chatgpt
+# 延遲載入 heavy modules 移至函數內部
 from privacy_utils import get_code, decode_name
 import pandas as pd
 import io
@@ -1022,6 +1019,7 @@ def sync_ceep_stream():
                 def bq_callback(m):
                     msg_queue.put(f"   [BQ] {m}")
                 
+                from sync_to_bq import sync_all as sync_to_bq_all
                 sync_success = sync_to_bq_all(callback=bq_callback)
                 if sync_success:
                     msg_queue.put("✅ BigQuery 數據已同步完成")
@@ -2802,6 +2800,7 @@ def admin_ai_analysis():
             return jsonify({"error": "未提供學員姓名"}), 400
         
         # 調用 AI 分析
+        from ai_handler import generate_ilp_chatgpt
         report = generate_ilp_chatgpt(student_name)
         return jsonify({"report": report})
     
